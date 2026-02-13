@@ -1,12 +1,9 @@
-# tariffs-profit-shifting
-Analyzing whether Section 301 tariffs caused tech firms to shift profits to foreign jurisdictions
-## Sample
-12 major tech companies:
-- Alphabet, Amazon, Microsoft, Meta, Oracle, Nvidia, Equinix, Intel, AMD, IBM, Cisco, Salesforce
-## Current Progress
-- [x] Define research question
-- [x] Collect data for 12 companies (2015-2025)
-- [ ] Descriptive analysis
-- [ ] Regression analysis
-- [ ] Final paper
+# Tariffs and Corporate Profit Shifting: Evidence from U.S. Firms
 
+## Overview
+
+Examining whether the 2018 Section 301 tariffs on Chinese imports caused U.S. multinational firms to shift a greater share of profits to foreign jurisdictions. Uses a two-way fixed effects model with an event study design exploiting cross-industry variation in tariff exposure.
+
+## Data
+Bloomberg Terminal | Firm-level annual financials (2015–2024) |
+USITC DataWeb | U.S. import values from China by NAICS industry |
