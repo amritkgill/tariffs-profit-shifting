@@ -4,7 +4,11 @@ Clean and merge all data sources into a single analysis-ready dataset.
 
 Inputs:
   - data/processed/sec_pretax_income_panel.csv (from 01_acquire_sec_data.py)
-  - firm_variables.xlsx (Bloomberg firm characteristics)
+  - firm_variables.xlsx (Bloomberg firm characteristics - 17 sheets):
+      * firm_universe: static firm info (ticker, SIC, NAICS, market cap)
+      * 8 time-series financial variable sheets (each in wide format: Ticker x Year):
+        total_revenue, pretax_income, rd_expense, total_assets, total_debt,
+        capital_expend, effective_tax_rate, operating_expenses
   - tariff_exposure_naics3.csv (Section 301 tariff exposure by industry)
   - data/raw/sec_ticker_cik_mapping.csv (SEC ticker-to-CIK mapping)
 
@@ -13,7 +17,7 @@ Output:
 
 Merge strategy:
   Bloomberg firms -> map to CIK via SEC ticker mapping -> merge with SEC income panel
-  -> add NAICS-3 tariff exposure
+  -> add Bloomberg time-series financials -> add NAICS-3 tariff exposure
 """
 
 import pandas as pd
@@ -71,6 +75,77 @@ def clean_firm_variables():
     print(f"  With SIC: {df['sic_code'].notna().sum()}")
 
     return df
+
+
+# ---------------------------------------------------------------------------
+# Step 1b: Load Bloomberg time-series financial variables
+# ---------------------------------------------------------------------------
+# Map sheet names to clean column names for the final dataset
+BLOOMBERG_TS_SHEETS = {
+    "total_revenue":        "total_revenue",
+    "pretax_income":        "pretax_income_bloomberg",
+    "rd_expense":           "rd_expense",
+    "total_assets":         "total_assets",
+    "total_debt":           "total_debt",
+    "capital_expend":       "capital_expenditure",
+    "effective_tax_rate":   "effective_tax_rate",
+    "operating_expenses":   "operating_expenses",
+}
+
+
+def load_bloomberg_timeseries():
+    """Read all Bloomberg time-series sheets and reshape to long panel format.
+
+    Each sheet is in wide format: Ticker | 2015 | 2016 | ... | 2025
+    We melt each into long format (Ticker, year, value) and merge them all.
+    """
+    print("\nStep 1b: Loading Bloomberg time-series financial variables...")
+
+    xlsx_path = BASE_DIR / "firm_variables.xlsx"
+    all_vars = []
+
+    for sheet_name, col_name in BLOOMBERG_TS_SHEETS.items():
+        df = pd.read_excel(xlsx_path, sheet_name=sheet_name)
+        # First row is sometimes a header/count row (same as firm_universe)
+        df = df.iloc[1:].reset_index(drop=True)
+
+        # Extract clean ticker
+        df["clean_ticker"] = (
+            df["Ticker"]
+            .str.replace(" US Equity", "", regex=False)
+            .str.strip()
+            .str.upper()
+        )
+
+        # Identify year columns (numeric column names)
+        year_cols = [c for c in df.columns if str(c).isdigit()]
+
+        # Melt wide -> long
+        melted = df.melt(
+            id_vars=["clean_ticker"],
+            value_vars=year_cols,
+            var_name="year",
+            value_name=col_name,
+        )
+        melted["year"] = melted["year"].astype(int)
+        melted[col_name] = pd.to_numeric(melted[col_name], errors="coerce")
+
+        # Filter to 2015-2024 (same as SEC panel)
+        melted = melted[(melted["year"] >= 2015) & (melted["year"] <= 2024)]
+
+        all_vars.append(melted)
+        n_obs = melted[col_name].notna().sum()
+        print(f"  {col_name}: {n_obs} non-null observations")
+
+    # Merge all variables together on (clean_ticker, year)
+    combined = all_vars[0]
+    for df in all_vars[1:]:
+        combined = combined.merge(df, on=["clean_ticker", "year"], how="outer")
+
+    print(f"  Combined Bloomberg time-series: {len(combined)} rows, "
+          f"{combined['clean_ticker'].nunique()} tickers")
+
+    return combined
 
 
 # ---------------------------------------------------------------------------
@@ -145,9 +220,9 @@ def clean_sec_panel():
 # ---------------------------------------------------------------------------
 # Step 4: Merge all datasets
 # ---------------------------------------------------------------------------
-def merge_all(firm_df, sec_panel, tariff_df):
-    """Merge firm characteristics, SEC income, and tariff exposure."""
-    print("\nStep 4: Merging all datasets...")
+def merge_all(firm_df, sec_panel, tariff_df, bloomberg_ts):
+    """Merge firm characteristics, SEC income, Bloomberg financials, and tariff exposure."""
+    print("\nStep 5: Merging all datasets...")
 
     # Merge firm characteristics with SEC income panel on CIK
     merged = sec_panel.merge(
@@ -157,6 +232,19 @@ def merge_all(firm_df, sec_panel, tariff_df):
         suffixes=("_sec", "_bloom")
     )
     print(f"  After firm-SEC merge: {len(merged)} obs, {merged['cik'].nunique()} firms")
+
+    # Add Bloomberg time-series financials on (clean_ticker, year)
+    n_before = len(merged)
+    merged = merged.merge(
+        bloomberg_ts,
+        on=["clean_ticker", "year"],
+        how="left"
+    )
+    print(f"  After Bloomberg time-series merge: {len(merged)} obs (should be same: {n_before})")
+    ts_cols = list(BLOOMBERG_TS_SHEETS.values())
+    for col in ts_cols:
+        n_filled = merged[col].notna().sum()
+        print(f"    {col}: {n_filled} non-null ({n_filled/len(merged)*100:.1f}%)")
 
     # Add tariff exposure by NAICS-3
     tariff_df["naics3"] = tariff_df["naics3"].astype("Int64")
@@ -173,11 +261,14 @@ def merge_all(firm_df, sec_panel, tariff_df):
     final_cols = [
         # Identifiers
         "cik", "clean_ticker", "company_name", "company_name_bloomberg", "year",
-        # Firm characteristics
+        # Firm characteristics (static)
         "sic_code", "naics_code", "naics3", "icb_subsector", "market_cap", "price",
-        # Income variables
+        # SEC income variables
         "foreign_pretax_income", "domestic_pretax_income", "total_pretax_income",
         "foreign_profit_share", "foreign_profit_share_winsorized", "fps_extreme",
+        # Bloomberg time-series financials
+        "total_revenue", "pretax_income_bloomberg", "rd_expense", "total_assets",
+        "total_debt", "capital_expenditure", "effective_tax_rate", "operating_expenses",
         # Tariff exposure
         "sector_name", "n_products_targeted", "n_varieties_targeted",
         "mean_tariff_increase", "sd_tariff_increase",
@@ -200,6 +291,9 @@ if __name__ == "__main__":
     # Step 1: Clean firm characteristics
     firm_df = clean_firm_variables()
 
+    # Step 1b: Load Bloomberg time-series financials
+    bloomberg_ts = load_bloomberg_timeseries()
+
     # Step 2: Map tickers to CIK
     firm_df = map_tickers_to_cik(firm_df)
 
@@ -210,7 +304,7 @@ if __name__ == "__main__":
     tariff_df = pd.read_csv(BASE_DIR / "tariff_exposure_naics3.csv")
 
     # Step 5: Merge all
-    final = merge_all(firm_df, sec_panel, tariff_df)
+    final = merge_all(firm_df, sec_panel, tariff_df, bloomberg_ts)
 
     # Save
     final.to_csv(PROCESSED_DIR / "merged_panel.csv", index=False)

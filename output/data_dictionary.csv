@@ -16,6 +16,14 @@ total_pretax_income,Total pre-tax income from all operations (USD),SEC EDGAR XBR
 foreign_profit_share,Foreign Profit Share = Foreign Pre-Tax Income / Total Pre-Tax Income. Main variable of interest.,Computed from SEC EDGAR data,key variable,float64,9282,5118,35.5,9044
 foreign_profit_share_winsorized,Foreign Profit Share winsorized at 1st and 99th percentiles to reduce outlier influence,Computed,key variable,float64,9282,5118,35.5,8860
 fps_extreme,Flag (True/False) indicating original FPS was outside 1st-99th percentile range,Computed,flag,bool,14400,0,0.0,2
+total_revenue,Total revenue in USD (annual),Bloomberg Terminal,financial variable,float64,13624,776,5.4,13203
+pretax_income_bloomberg,Pre-tax income in USD from Bloomberg (annual). Serves as cross-check against SEC EDGAR total_pretax_income.,Bloomberg Terminal,financial variable,float64,14279,121,0.8,13592
+rd_expense,Research and development expense in USD (annual),Bloomberg Terminal,financial variable,float64,12438,1962,13.6,6136
+total_assets,Total assets in USD (annual),Bloomberg Terminal,financial variable,float64,14284,116,0.8,14195
+total_debt,Total debt (short-term + long-term) in USD (annual),Bloomberg Terminal,financial variable,float64,14271,129,0.9,13066
+capital_expenditure,"Capital expenditure in USD (annual, typically negative as cash outflow)",Bloomberg Terminal,financial variable,float64,14251,149,1.0,12136
+effective_tax_rate,Effective tax rate as a percentage (annual),Bloomberg Terminal,financial variable,float64,10544,3856,26.8,9796
+operating_expenses,Total operating expenses in USD (annual),Bloomberg Terminal,financial variable,float64,14252,148,1.0,13670
 sector_name,NAICS-3 sector name from tariff exposure data,Section 301 tariff data,tariff variable,str,7333,7067,49.1,24
 n_products_targeted,Number of HS-8 products targeted by Section 301 tariffs in this NAICS-3 industry,Section 301 tariff data,tariff variable,float64,7333,7067,49.1,24
 n_varieties_targeted,Number of product varieties (HS-8 x country) targeted by Section 301 tariffs,Section 301 tariff data,tariff variable,float64,7333,7067,49.1,24

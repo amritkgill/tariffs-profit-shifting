@@ -139,6 +139,46 @@ def create_data_dictionary(df):
             "source": "Section 301 tariff data",
             "type": "tariff variable",
         },
+        "total_revenue": {
+            "description": "Total revenue in USD (annual)",
+            "source": "Bloomberg Terminal",
+            "type": "financial variable",
+        },
+        "pretax_income_bloomberg": {
+            "description": "Pre-tax income in USD from Bloomberg (annual). Serves as cross-check against SEC EDGAR total_pretax_income.",
+            "source": "Bloomberg Terminal",
+            "type": "financial variable",
+        },
+        "rd_expense": {
+            "description": "Research and development expense in USD (annual)",
+            "source": "Bloomberg Terminal",
+            "type": "financial variable",
+        },
+        "total_assets": {
+            "description": "Total assets in USD (annual)",
+            "source": "Bloomberg Terminal",
+            "type": "financial variable",
+        },
+        "total_debt": {
+            "description": "Total debt (short-term + long-term) in USD (annual)",
+            "source": "Bloomberg Terminal",
+            "type": "financial variable",
+        },
+        "capital_expenditure": {
+            "description": "Capital expenditure in USD (annual, typically negative as cash outflow)",
+            "source": "Bloomberg Terminal",
+            "type": "financial variable",
+        },
+        "effective_tax_rate": {
+            "description": "Effective tax rate as a percentage (annual)",
+            "source": "Bloomberg Terminal",
+            "type": "financial variable",
+        },
+        "operating_expenses": {
+            "description": "Total operating expenses in USD (annual)",
+            "source": "Bloomberg Terminal",
+            "type": "financial variable",
+        },
     }
 
     rows = []
@@ -173,6 +213,8 @@ def create_summary_statistics(df):
         "market_cap", "price",
         "foreign_pretax_income", "domestic_pretax_income", "total_pretax_income",
         "foreign_profit_share", "foreign_profit_share_winsorized",
+        "total_revenue", "pretax_income_bloomberg", "rd_expense", "total_assets",
+        "total_debt", "capital_expenditure", "effective_tax_rate", "operating_expenses",
         "n_products_targeted", "n_varieties_targeted",
         "mean_tariff_increase", "sd_tariff_increase",
     ]

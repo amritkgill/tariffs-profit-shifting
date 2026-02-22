@@ -10,7 +10,7 @@ This dataset is constructed to examine the relationship between Section 301 tari
 |--------|-----------|--------|
 | SEC EDGAR XBRL CompanyFacts API | Foreign, domestic, and total pre-tax income | Free (public API) |
 | SEC EDGAR company_tickers.json | Ticker-to-CIK mapping | Free |
-| Bloomberg Terminal | Firm identifiers (ticker, SIC, NAICS), market cap, price | University license |
+| Bloomberg Terminal | Firm identifiers (ticker, SIC, NAICS), market cap, price, and annual financials (revenue, assets, debt, capex, R&D, effective tax rate, operating expenses) | Bloomberg Terminal |
 | Section 301 tariff data | Tariff exposure by NAICS-3 industry | Research dataset |
 
 ## Key Decisions
@@ -35,7 +35,9 @@ Tariff exposure is merged at the NAICS 3-digit level. The tariff data covers 26 
 
 ### 4. Sample Construction
 
-Starting from 3,000 firms in the Bloomberg universe, 1,108 are ETFs/funds that cannot be matched to SEC EDGAR filings. The remaining 1,892 operating companies are matched to SEC data via ticker-CIK mapping, yielding 1,683 firms with income data. The panel is unbalanced (firms enter and exit over time).
+Starting from 3,000 firms in the Bloomberg universe, 1,108 are ETFs/funds that cannot be matched to SEC EDGAR filings. The remaining 1,892 operating companies are matched to SEC data via ticker-CIK mapping, yielding 1,675 firms with income data. The final panel contains 14,400 firm-year observations across 2015-2024.
+
+The panel is **unbalanced** --- not every firm appears in every year. A balanced panel would have 16,750 rows (1,675 x 10 years), so about 14% of firm-years are missing. Most of this is due to firms entering the sample after 2015 (e.g., IPOs or SPAC mergers), with smaller shares from firms exiting early (acquisitions, delistings) or occasional gaps in XBRL tag usage. About 65% of firms have all 10 years of data. This is common in SEC XBRL data. Because the missingness is driven mainly by when firms began trading rather than by anything related to profit shifting or tariff exposure, it is unlikely to bias estimation. Firm fixed effects handle the unbalanced structure by absorbing time-invariant firm characteristics regardless of how many years each firm is observed. That said, if firms that exit the sample early (e.g., through acquisition) differ systematically in their profit-shifting behavior, this could introduce mild survivorship bias and should be kept in mind when interpreting results.
 
 ## Data Limitations
 
@@ -51,7 +53,7 @@ Starting from 3,000 firms in the Bloomberg universe, 1,108 are ETFs/funds that c
 
 ## Remaining Gaps
 
-- **Year-specific firm controls**: Time-varying control variables (annual revenue, employee count, R&D spending, leverage) would strengthen causal identification but require additional data collection from Compustat or SEC EDGAR.
+- **Year-specific firm controls**: Eight time-varying control variables from Bloomberg (total revenue, pre-tax income, R&D expense, total assets, total debt, capital expenditure, effective tax rate, operating expenses) are included in the panel for 2015-2024. Coverage is high (94-99% for most variables, 73% for effective tax rate).
 - **Firm-level tariff exposure**: Product-level import data (from US Census or UN Comtrade) could be used to construct firm-specific tariff exposure based on disclosed product segments.
 - **Pre-2015 data**: Extending the panel back to 2010-2012 would provide more pre-tariff baseline years, but XBRL coverage declines significantly before 2015.
 - **Non-US multinationals**: The sample is limited to US-listed firms. Foreign multinationals operating in the US are excluded.
