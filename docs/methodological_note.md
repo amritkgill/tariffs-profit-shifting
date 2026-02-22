@@ -8,7 +8,7 @@ This dataset is constructed to examine the relationship between Section 301 tari
 
 | Source | Variables | Access |
 |--------|-----------|--------|
-| SEC EDGAR XBRL Frames API | Foreign, domestic, and total pre-tax income | Free (public API) |
+| SEC EDGAR XBRL CompanyFacts API | Foreign, domestic, and total pre-tax income | Free (public API) |
 | SEC EDGAR company_tickers.json | Ticker-to-CIK mapping | Free |
 | Bloomberg Terminal | Firm identifiers (ticker, SIC, NAICS), market cap, price | University license |
 | Section 301 tariff data | Tariff exposure by NAICS-3 industry | Research dataset |
@@ -27,7 +27,7 @@ When a firm uses both tags in the same year, the newer tag takes priority.
 
 ### 2. Outlier Treatment
 
-Foreign Profit Share is winsorized at the 1st and 99th percentiles. The raw variable exhibits extreme values (min: -12,542; max: 2,151) driven by firms with near-zero total income. After winsorization, the range is approximately [-4.8, 5.4]. Observations with extreme values are flagged via `fps_extreme` for sensitivity analysis.
+Foreign Profit Share is winsorized at the 1st and 99th percentiles. The raw variable exhibits extreme values (min: -12,542; max: 329) driven by firms with near-zero total income. After winsorization, the range is approximately [-4.1, 4.9]. Observations with extreme values are flagged via `fps_extreme` for sensitivity analysis.
 
 ### 3. Tariff Merge Strategy
 
@@ -47,7 +47,7 @@ Starting from 3,000 firms in the Bloomberg universe, 1,108 are ETFs/funds that c
 
 4. **Foreign Profit Share interpretation**: FPS values outside [0, 1] are valid but require careful interpretation. FPS > 1 occurs when domestic income is negative (losses) while foreign operations are profitable. FPS < 0 occurs when foreign income is negative or total income is negative. Approximately 32% of observations fall outside [0, 1].
 
-5. **Fiscal year alignment**: The SEC Frames API returns data by calendar year, but some firms have non-December fiscal year-ends. This introduces a 1-2 quarter timing mismatch for approximately 30-40% of firms.
+5. **Fiscal year alignment**: The SEC CompanyFacts API provides exact period end dates, which we use to assign data to the correct fiscal year. This avoids the calendar-year misalignment that would occur with the Frames API for non-December fiscal year-end firms (approximately 30-40% of the sample).
 
 ## Remaining Gaps
 
@@ -63,4 +63,4 @@ All code is in the `code/` directory and numbered in execution order:
 2. `02_clean_and_merge.py` - Cleans and merges all sources
 3. `03_data_dictionary_and_stats.py` - Generates documentation and checks
 
-To reproduce: set up a Python virtual environment, install `requirements.txt`, and run the scripts in order. The SEC EDGAR API is rate-limited (10 requests/second); full acquisition takes approximately 1-2 minutes.
+To reproduce: set up a Python virtual environment, install `requirements.txt`, and run the scripts in order. The SEC EDGAR API is rate-limited (10 requests/second); full acquisition takes approximately 3-4 minutes (one API call per firm).

@@ -2,8 +2,12 @@
 01_acquire_sec_data.py
 Acquire Foreign Pre-Tax Income and Total Pre-Tax Income from SEC EDGAR.
 
-Uses the SEC XBRL Frames API to pull standardized financial data across all
-US public firms for calendar years 2015-2024.
+Uses the SEC XBRL CompanyFacts API to pull fiscal-year-aligned financial data
+for US public firms, FY2015-FY2024.
+
+This approach calls the companyfacts endpoint for each firm individually,
+which gives exact fiscal year labels (avoiding the calendar-year misalignment
+issue in the Frames API for non-December fiscal year-end firms).
 
 XBRL tags used:
   - IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign
@@ -14,7 +18,7 @@ XBRL tags used:
 Key variable constructed:
   Foreign Profit Share = Foreign Pre-Tax Income / Total Pre-Tax Income
 
-Data source: https://data.sec.gov/api/xbrl/frames/
+Data source: https://data.sec.gov/api/xbrl/companyfacts/
 Ticker-CIK mapping: https://www.sec.gov/files/company_tickers.json
 """
 
@@ -35,7 +39,8 @@ PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 HEADERS = {"User-Agent": "AcademicResearch capstone-tariffs-profit-shifting@university.edu"}
 
-YEARS = range(2015, 2025)  # CY2015 through CY2024
+FY_MIN = 2015
+FY_MAX = 2024
 
 # XBRL tag definitions
 TAGS = {
@@ -44,6 +49,7 @@ TAGS = {
     "total_v1": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
     "total_v2": "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
 }
+
 
 # ---------------------------------------------------------------------------
 # Step 1: Download SEC ticker-to-CIK mapping
@@ -65,92 +71,164 @@ def get_sec_ticker_mapping():
 
 
 # ---------------------------------------------------------------------------
-# Step 2: Pull data from SEC XBRL Frames API
+# Step 2: Identify which CIKs we need (Bloomberg sample)
 # ---------------------------------------------------------------------------
-def fetch_frames_data(tag_name, label, year):
-    """
-    Fetch one tag for one calendar year from the SEC Frames API.
-    Returns a DataFrame with [cik, company_name, value, year].
-    """
-    url = f"https://data.sec.gov/api/xbrl/frames/us-gaap/{tag_name}/USD/CY{year}.json"
-    resp = requests.get(url, headers=HEADERS)
-    if resp.status_code == 404:
-        return pd.DataFrame()
-    resp.raise_for_status()
-    data = resp.json()
-    records = data.get("data", [])
-    if not records:
-        return pd.DataFrame()
+def get_target_ciks(ticker_map):
+    """Load Bloomberg firm list and map to CIKs."""
+    print("\nStep 2: Identifying target firms from Bloomberg universe...")
+    firm = pd.read_excel(BASE_DIR / "firm_variables.xlsx")
+    firm = firm.iloc[1:].reset_index(drop=True)
+    firm["clean_ticker"] = (
+        firm["Ticker"].str.replace(" US Equity", "", regex=False)
+        .str.strip().str.upper()
+    )
 
-    df = pd.DataFrame(records)
-    df = df.rename(columns={"entityName": "company_name", "val": "value"})
-    df["year"] = year
-    df["tag_label"] = label
-    # Keep relevant columns
-    cols_to_keep = [c for c in ["cik", "company_name", "value", "year", "tag_label", "accn"] if c in df.columns]
-    return df[cols_to_keep]
-
-
-def download_all_frames():
-    """Download all income tags for all years from the Frames API."""
-    print("\nStep 2: Downloading data from SEC XBRL Frames API...")
-    all_data = []
-
-    for year in YEARS:
-        print(f"  Year {year}:")
-        for label, tag_name in TAGS.items():
-            df = fetch_frames_data(tag_name, label, year)
-            if not df.empty:
-                all_data.append(df)
-                print(f"    {label}: {len(df)} firms")
-            else:
-                print(f"    {label}: no data")
-            time.sleep(0.12)  # SEC rate limit: ~10 req/sec
-
-    combined = pd.concat(all_data, ignore_index=True)
-    print(f"\n  Total raw records: {len(combined)}")
-    return combined
+    merged = firm.merge(
+        ticker_map[["ticker", "cik"]],
+        left_on="clean_ticker", right_on="ticker", how="inner"
+    )
+    ciks = sorted(merged["cik"].unique().tolist())
+    print(f"  Target firms with CIK: {len(ciks)}")
+    return ciks
 
 
 # ---------------------------------------------------------------------------
-# Step 3: Reshape into firm-year panel
+# Step 3: Pull data from SEC CompanyFacts API (per-firm)
+# ---------------------------------------------------------------------------
+def extract_tag_data(facts, tag_name, label, cik):
+    """
+    Extract annual (FY) data for one XBRL tag from a companyfacts response.
+    Uses the 'end' date (period end) to determine the correct fiscal year,
+    NOT the 'fy' field (which is the filing year and includes comparatives).
+    """
+    us_gaap = facts.get("facts", {}).get("us-gaap", {})
+    tag_data = us_gaap.get(tag_name, {})
+    usd_data = tag_data.get("units", {}).get("USD", [])
+
+    if not usd_data:
+        return []
+
+    rows = []
+    for entry in usd_data:
+        # Only keep annual 10-K filings
+        if entry.get("form") != "10-K":
+            continue
+
+        # Use the period end date to determine the data's actual fiscal year
+        end_date = entry.get("end", "")
+        if not end_date or len(end_date) < 4:
+            continue
+        data_year = int(end_date[:4])
+
+        # For income items, require ~12 month duration (start to end)
+        start_date = entry.get("start", "")
+        if start_date:
+            from datetime import datetime
+            try:
+                start = datetime.strptime(start_date, "%Y-%m-%d")
+                end = datetime.strptime(end_date, "%Y-%m-%d")
+                duration_days = (end - start).days
+                # Accept 300-400 day durations (full fiscal year)
+                if duration_days < 300 or duration_days > 400:
+                    continue
+            except ValueError:
+                continue
+
+        if data_year < FY_MIN or data_year > FY_MAX:
+            continue
+
+        rows.append({
+            "cik": cik,
+            "data_year": data_year,
+            "tag_label": label,
+            "value": entry["val"],
+            "filed": entry.get("filed", ""),
+            "accn": entry.get("accn", ""),
+            "end": end_date,
+        })
+    return rows
+
+
+def download_companyfacts(ciks):
+    """Download companyfacts for each CIK and extract income data."""
+    print(f"\nStep 3: Downloading CompanyFacts for {len(ciks)} firms...")
+    print(f"  (estimated time: ~{len(ciks) // 10 // 60 + 1} minutes at 10 req/sec)")
+
+    all_rows = []
+    errors = 0
+    for i, cik in enumerate(ciks):
+        if (i + 1) % 200 == 0:
+            print(f"  Progress: {i + 1} / {len(ciks)} ({(i+1)/len(ciks)*100:.0f}%)")
+
+        cik_padded = str(cik).zfill(10)
+        url = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik_padded}.json"
+
+        try:
+            resp = requests.get(url, headers=HEADERS)
+            if resp.status_code == 404:
+                continue
+            resp.raise_for_status()
+            facts = resp.json()
+
+            for label, tag_name in TAGS.items():
+                rows = extract_tag_data(facts, tag_name, label, cik)
+                all_rows.extend(rows)
+
+        except Exception as e:
+            errors += 1
+            if errors <= 5:
+                print(f"  Error for CIK {cik}: {e}")
+
+        # SEC rate limit: 10 requests/second
+        time.sleep(0.11)
+
+    print(f"  Done. Errors: {errors}")
+    print(f"  Total raw records: {len(all_rows)}")
+
+    df = pd.DataFrame(all_rows)
+
+    # Get company names from the ticker mapping
+    ticker_map = pd.read_csv(RAW_DIR / "sec_ticker_cik_mapping.csv")
+    df = df.merge(ticker_map[["cik", "company_name"]], on="cik", how="left")
+
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Step 4: Reshape into firm-year panel
 # ---------------------------------------------------------------------------
 def build_panel(raw_data):
     """
-    Build firm-year panel with:
-    - foreign_pretax_income
-    - domestic_pretax_income
-    - total_pretax_income
-    - foreign_profit_share
+    Build firm-year panel with proper fiscal year alignment.
+    For each firm-year-tag, keeps the value from the most recent filing.
     """
-    print("\nStep 3: Building firm-year panel...")
+    print("\nStep 4: Building firm-year panel...")
     df = raw_data.copy()
 
     # Combine the two total income tags (v1 is newer, v2 is older)
     df["tag_label"] = df["tag_label"].replace({"total_v1": "total", "total_v2": "total"})
 
-    # For firms with both total tags in the same year, keep v1 (higher priority)
-    df = df.drop_duplicates(subset=["cik", "year", "tag_label"], keep="first")
+    # For each firm-year-tag, keep the most recently filed value
+    df = df.sort_values("filed", ascending=False)
+    df = df.drop_duplicates(subset=["cik", "data_year", "tag_label"], keep="first")
 
     # Pivot to wide
     panel = df.pivot_table(
-        index=["cik", "company_name", "year"],
+        index=["cik", "company_name", "data_year"],
         columns="tag_label",
         values="value",
         aggfunc="first"
     ).reset_index()
     panel.columns.name = None
-
-    # Rename columns
-    rename_map = {
+    panel = panel.rename(columns={
+        "data_year": "year",
         "foreign": "foreign_pretax_income",
         "domestic": "domestic_pretax_income",
         "total": "total_pretax_income",
-    }
-    panel = panel.rename(columns=rename_map)
+    })
 
     # Ensure columns exist
-    for col in rename_map.values():
+    for col in ["foreign_pretax_income", "domestic_pretax_income", "total_pretax_income"]:
         if col not in panel.columns:
             panel[col] = np.nan
 
@@ -183,18 +261,21 @@ def build_panel(raw_data):
 if __name__ == "__main__":
     print("=" * 65)
     print("SEC EDGAR Data Acquisition: Foreign & Total Pre-Tax Income")
-    print("Source: SEC XBRL Frames API")
+    print("Source: SEC XBRL CompanyFacts API (fiscal-year aligned)")
     print("=" * 65)
 
     # Step 1
     ticker_map = get_sec_ticker_mapping()
 
     # Step 2
-    raw_data = download_all_frames()
+    target_ciks = get_target_ciks(ticker_map)
+
+    # Step 3
+    raw_data = download_companyfacts(target_ciks)
     raw_data.to_csv(RAW_DIR / "sec_pretax_income_raw.csv", index=False)
     print(f"  Raw data saved to data/raw/sec_pretax_income_raw.csv")
 
-    # Step 3
+    # Step 4
     panel = build_panel(raw_data)
     panel.to_csv(PROCESSED_DIR / "sec_pretax_income_panel.csv", index=False)
     print(f"  Panel saved to data/processed/sec_pretax_income_panel.csv")
