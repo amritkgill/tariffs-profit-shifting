@@ -1,0 +1,27 @@
+naics3,sector_name,n_products_targeted,n_varieties_targeted,mean_tariff_increase,sd_tariff_increase
+111,Crop and Animal Production,456,456,0.10,0.00
+113,Forestry and Logging,71,71,0.10,0.00
+114,"Fishing, Hunting, and Trapping",486,486,0.10,0.00
+211,Oil and Gas Extraction,17,17,0.10,0.00
+212,Mining (Except Oil and Gas),103,103,0.10,0.00
+311,Food Manufacturing,732,732,0.10,0.00
+312,Beverage and Tobacco Products,64,64,0.10,0.00
+313,Textile Mills,1502,1502,0.10,0.00
+314,Textile Product Mills,176,176,0.10,0.00
+315,Apparel Manufacturing,92,92,0.10,0.00
+316,Leather and Allied Products,237,237,0.10,0.00
+321,Wood Products,424,424,0.10,0.00
+322,Paper Manufacturing,335,335,0.12,0.05
+323,Printing and Related Activities,14,14,0.10,0.00
+324,Petroleum and Coal Products,74,74,0.13,0.06
+325,Chemical Manufacturing,1730,1730,0.12,0.05
+326,Plastics and Rubber Products,251,251,0.15,0.07
+327,Nonmetallic Mineral Products,354,354,0.11,0.03
+331,Primary Metal Manufacturing,1147,14093,0.19,0.07
+332,Fabricated Metal Products,583,852,0.14,0.06
+333,Machinery Manufacturing,1344,1344,0.20,0.07
+334,Computer and Electronic Products,617,878,0.21,0.07
+335,Electrical Equipment and Appliances,414,594,0.18,0.08
+336,Transportation Equipment,429,429,0.15,0.07
+337,Furniture and Related Products,160,160,0.10,0.01
+339,Miscellaneous Manufacturing,231,231,0.13,0.06
