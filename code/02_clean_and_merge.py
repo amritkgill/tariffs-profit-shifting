@@ -113,6 +113,13 @@ def clean_sec_panel():
 
     # Filter to 2015-2024
     panel = panel[(panel["year"] >= 2015) & (panel["year"] <= 2024)].copy()
+
+    # Remove duplicate CIK-year rows (keep first, which has higher priority tag)
+    n_before = len(panel)
+    panel = panel.drop_duplicates(subset=["cik", "year"], keep="first")
+    n_dropped = n_before - len(panel)
+    if n_dropped > 0:
+        print(f"  Dropped {n_dropped} duplicate CIK-year rows")
     print(f"  Observations (2015-2024): {len(panel)}")
 
     # Winsorize foreign_profit_share at 1st and 99th percentiles

@@ -1,0 +1,65 @@
+=================================================================
+DATA QUALITY CHECKS
+=================================================================
+
+1. PANEL STRUCTURE
+   Total observations: 14576
+   Unique firms: 1683
+   Year range: 2015-2024
+   Firms per year:
+     2015: 1191
+     2016: 1246
+     2017: 1301
+     2018: 1350
+     2019: 1467
+     2020: 1525
+     2021: 1577
+     2022: 1624
+     2023: 1644
+     2024: 1651
+   Panel is UNBALANCED (firms enter/exit over time)
+
+2. MISSING DATA
+   foreign_pretax_income: 5083 missing (34.9%)
+   domestic_pretax_income: 5209 missing (35.7%)
+   total_pretax_income: 236 missing (1.6%)
+   foreign_profit_share: 5201 missing (35.7%)
+   mean_tariff_increase: 7168 missing (49.2%)
+
+3. NEGATIVE INCOME VALUES
+   Firms with negative total pre-tax income: 4024 (27.6%)
+   Note: Negative income is valid (firms can have losses)
+
+4. FOREIGN PROFIT SHARE DISTRIBUTION
+   Obs with FPS > 1 (foreign > total): 1089
+   Obs with FPS < 0 (negative foreign or total): 1910
+   Obs with FPS in [0, 1] (normal range): 6376
+   Note: FPS outside [0,1] occurs when domestic or foreign income is negative
+
+5. DUPLICATE CHECK
+   Duplicate firm-year observations: 0
+   No duplicates found (clean)
+
+6. TARIFF MERGE QUALITY
+   Obs matched to tariff data: 7408 (50.8%)
+   Unmatched obs: 7168
+   Note: Unmatched firms are in industries not covered by Section 301 tariffs
+   (e.g., services, finance, healthcare - tariffs apply to goods-producing sectors)
+
+7. ACCOUNTING IDENTITY CHECK (Foreign + Domestic ≈ Total)
+   Obs with all three income vars: 9136
+   Mean residual: 197225.15
+   Max absolute residual: 10166000000.00
+   Obs where |residual| > 1000: 358
+
+8. FOREIGN PROFIT SHARE COVERAGE BY YEAR
+   2015: 747 / 1191 firms (62.7%)
+   2016: 791 / 1246 firms (63.5%)
+   2017: 822 / 1301 firms (63.2%)
+   2018: 851 / 1350 firms (63.0%)
+   2019: 931 / 1467 firms (63.5%)
+   2020: 982 / 1525 firms (64.4%)
+   2021: 1014 / 1577 firms (64.3%)
+   2022: 1062 / 1624 firms (65.4%)
+   2023: 1088 / 1644 firms (66.2%)
+   2024: 1087 / 1651 firms (65.8%)
