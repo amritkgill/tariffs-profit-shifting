@@ -84,6 +84,29 @@ To check that the parallel trends assumption holds, the model is re-estimated wi
 - **2018 has a temporary spike** (coefficient of +92.8, p = 0.366). This makes sense --- tariff-exposed firms faced sudden cost increases before they had a chance to adjust their tax planning.
 - **Post-2019 coefficients are negative**, ranging from about -31 to -77. None of them are individually significant (the confidence intervals get wide when you split the effect across separate years with only 24 clusters), but the pattern is consistent with the main result. The aggregate model pools all post-2018 years together, which is where the statistical power comes from.
 
+## Alternative Tariff Exposure Measures
+
+The main model uses mean tariff increase as the treatment intensity variable. But the tariff data includes other ways to measure exposure: the number of HS-8 products targeted in each industry, the number of product-country varieties targeted, and the standard deviation of tariff increases within each industry. All four measures were standardized (z-scored) so the coefficients represent the effect of a one-standard-deviation increase in tariff exposure.
+
+| Measure | Coef | SE | p-value |
+|---|---|---|---|
+| Mean tariff increase | -2.9 | 0.6 | <0.001 |
+| N products targeted | +1.0 | 1.2 | 0.390 |
+| N varieties targeted | +0.4 | 0.4 | 0.365 |
+| SD of tariff increase | -2.0 | 0.8 | 0.024 |
+
+The mean tariff rate and standard deviation of tariff rates both produce significant negative effects on ETR, while the product count measures do not. This pattern is economically coherent. What matters for profit shifting is how much the tariff raises costs (the rate), not how many product lines are technically covered. Textile Mills had 1,502 products targeted but only a flat 10% rate, while Computer and Electronic Products had 617 products but the highest rate at 21%. A blanket 10% tariff across many products is a uniform cost shock; a 21% tariff is a much stronger incentive to restructure a firm's tax position.
+
+The SD of tariff increase is highly correlated with the mean rate (r = 0.87), so its significance partly reflects the same underlying variation. Still, it provides a useful independent confirmation using a different conceptualization of exposure: industries where tariff rates varied more across products (reflecting more targeted, higher-rate tariffs on specific inputs) saw larger ETR declines.
+
+## Tariff Measurement and Attenuation Bias
+
+Tariff exposure is assigned at the NAICS 3-digit industry level, meaning all firms in the same 3-digit industry get the same tariff score. This is a limitation because firms within the same industry can make very different products. A semiconductor manufacturer and a consumer electronics company both fall under NAICS 334, but their actual import exposure to Section 301 tariffs could be quite different.
+
+This measurement error has a well-known consequence: classical attenuation bias. When the treatment variable is measured with error (as it is here, because the industry-level average is a noisy proxy for each firm's true exposure), the estimated coefficient is biased toward zero. This means the true effect is likely larger than what we estimate, not smaller. The -68.4 coefficient (or the more conservative -24.1 from p5/p95) is, if anything, an underestimate of the causal effect for firms whose actual exposure matches the industry average.
+
+Building firm-level tariff exposure would require mapping each firm's product mix to HS-8 tariff codes using product-level import data from the Census Bureau or UN Comtrade, combined with the HS-to-NAICS concordance published by the Census Bureau (the `imp-code.txt` files). The Section 301 tariff lists with specific HS-8 codes are published by USTR. This is feasible as a future extension but beyond the scope of the current analysis.
+
 ## Interpretation Caveats
 
 1. **Magnitude is sensitive to outlier treatment.** The headline coefficient of -68.4 relies on the full ETR distribution, which includes values above 100%. The more conservative estimate from p5/p95 winsorization is -24.1 (still significant at p = 0.021), implying roughly a 5 percentage point ETR drop rather than 14.
@@ -91,3 +114,5 @@ To check that the parallel trends assumption holds, the model is re-estimated wi
 2. **The effect is identified from 24 industries.** With few clusters, inference relies on the wild cluster bootstrap rather than standard asymptotics. The bootstrap p-value (0.009) supports the main finding.
 
 3. **Industry time trends absorb some of the effect.** The coefficient weakens with NAICS-2 linear trends (p = 0.122) and shrinks with NAICS-2 x year FE (though it remains significant at p = 0.009 with correct clustering). Part of the effect could reflect industry-specific trends correlated with tariff exposure.
+
+4. **Tariff exposure is measured at the industry level, not the firm level.** Classical attenuation bias means the estimated effect is likely a lower bound. The result is robust to the tariff rate measure (mean and SD both significant) but not to product count measures, confirming that tariff intensity --- not just breadth of coverage --- drives the effect.

@@ -110,6 +110,8 @@ The fact that the [0, 60] specification is not significant (p = 0.385) is worth 
 3. New robustness checks: SIC 1-digit x year FE, NAICS-2 linear time trends, placebo test, balanced panel, three ETR trimming variants
 4. Old goods-only subsample check removed (it was redundant because only goods firms have tariff data, so the main model already restricts to goods firms by construction)
 
+5. Alternative tariff exposure measures added: n_products_targeted, n_varieties_targeted, sd_tariff_increase (all z-scored for comparability)
+
 ### Before vs after
 
 | What changed | Before | After |
@@ -121,4 +123,38 @@ The fact that the [0, 60] specification is not significant (p = 0.385) is worth 
 | Placebo test | Not done | Passes (wrong sign, p = 0.108) |
 | Balanced panel check | Not done | Passes (p < 0.001) |
 | ETR sensitivity checks | None | 3 (p5/p95, [0,100], [0,60]) |
-| Significant robustness checks | 2 of 3 | 7 of 10 |
+| Alternative tariff measures | None | 4 (mean rate, n products, n varieties, SD rate) |
+| Significant robustness checks | 2 of 3 | 9 of 14 |
+
+---
+
+## Problem 4: Only One Tariff Exposure Measure Was Tested
+
+### What was wrong
+
+The original analysis used only `mean_tariff_increase` as the treatment intensity variable. If the result only holds for one specific way of measuring tariff exposure, it could be picking up something idiosyncratic about that particular variable rather than a genuine tariff effect. The dataset includes three other measures of tariff exposure --- the number of products targeted, the number of product-country varieties targeted, and the standard deviation of tariff increases within each industry --- but none of them were tested.
+
+### What was done
+
+All four tariff measures were standardized (z-scored) so their coefficients are comparable: each one tells you the effect of a one-standard-deviation increase in that measure of exposure. The main ETR regression was then rerun with each standardized measure replacing the original `mean_tariff_increase` interaction.
+
+### How the results changed
+
+| Measure | Coef | SE | p-value |
+|---|---|---|---|
+| Mean tariff increase (z) | -2.9 | 0.6 | <0.001 |
+| N products targeted (z) | +1.0 | 1.2 | 0.390 |
+| N varieties targeted (z) | +0.4 | 0.4 | 0.365 |
+| SD of tariff increase (z) | -2.0 | 0.8 | 0.024 |
+
+The tariff rate measures (mean and SD) both produce significant, negative effects on ETR. The product count measures do not --- in fact, they have the wrong sign.
+
+This pattern makes economic sense once you look at the data. Many industries with low tariff rates (a flat 10%) have very high product counts --- Textile Mills had 1,502 products targeted, Chemical Manufacturing had 1,730. Meanwhile, the industries with the highest tariff rates (Computer/Electronic Products at 21%, Machinery at 20%) have moderate product counts (617 and 1,344). What drives profit shifting isn't how many product categories are technically covered by tariffs. It's how much the tariff actually raises costs. A blanket 10% across 1,500 products is a uniform, modest cost shock. A 21% tariff on key inputs is a much bigger incentive to restructure where profits are booked.
+
+The SD of tariff increase is highly correlated with the mean rate (r = 0.87), so its significance partly reflects the same underlying variation. But it captures a different aspect of exposure: industries where tariff rates varied more across products (reflecting targeted, higher-rate tariffs on specific inputs rather than a uniform flat rate) saw larger ETR declines.
+
+### Attenuation bias
+
+Tariff exposure is assigned at the NAICS 3-digit industry level, meaning all firms in the same industry get the same score. This is a noisy proxy for each firm's true exposure, since firms within the same NAICS-3 make different products. This measurement error causes classical attenuation bias: the estimated coefficient is biased toward zero, meaning the true effect is likely larger than what we find. The -68.4 coefficient (or the more conservative -24.1) is an underestimate if anything.
+
+Building firm-level tariff exposure would require mapping each firm's product mix to HS-8 tariff codes using product-level import data from the Census Bureau, combined with the HS-to-NAICS concordance (the Census `imp-code.txt` files). The USTR publishes the Section 301 tariff lists with specific HS-8 codes. This is feasible as a future extension but beyond the scope of the current analysis.

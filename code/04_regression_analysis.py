@@ -87,6 +87,17 @@ print(f"ETR trimmed [0,60]:  {df['etr_trim_60'].notna().sum():,} obs")
 # -- Interaction term --
 df["tariff_x_post"] = df["mean_tariff_increase"] * df["post2018"]
 
+# -- Alternative tariff measures (standardized for comparability) --
+# Each is z-scored so coefficients measure "effect of 1 SD increase in exposure"
+for col in ["mean_tariff_increase", "n_products_targeted", "n_varieties_targeted", "sd_tariff_increase"]:
+    vals = df[col].dropna()
+    df[f"{col}_z"] = (df[col] - vals.mean()) / vals.std()
+
+df["products_x_post"] = df["n_products_targeted_z"] * df["post2018"]
+df["varieties_x_post"] = df["n_varieties_targeted_z"] * df["post2018"]
+df["sd_tariff_x_post"] = df["sd_tariff_increase_z"] * df["post2018"]
+df["mean_tariff_z_x_post"] = df["mean_tariff_increase_z"] * df["post2018"]
+
 # -- Industry groupings for FE variants --
 df["naics2"] = df["naics_code"].astype(str).str[:2]
 df["sic1"] = df["sic_code"].astype(str).str[0]
@@ -353,6 +364,75 @@ r10 = pf.feols(
 )
 robustness["R10: FPS outcome"] = r10
 print(r10.summary())
+
+
+# -----------------------------------------------------------------------
+# Step 6b: Alternative tariff exposure measures (all standardized)
+# -----------------------------------------------------------------------
+print(f"\n{'=' * 65}")
+print("STEP 6b: Alternative Tariff Exposure Measures")
+print("All measures standardized (z-scored) for comparability")
+print("Coefficients = effect of 1 SD increase in tariff exposure")
+print("=" * 65)
+
+alt_measures = {}
+
+# -- Mean tariff (standardized, for baseline comparison) --
+print("\n--- A1: Mean tariff increase (z-scored) ---")
+a1 = pf.feols(
+    f"etr_winsorized ~ mean_tariff_z_x_post + {CONTROLS} | cik + year",
+    data=df, vcov={"CRV1": "naics3_str"},
+)
+alt_measures["A1: Mean tariff (z)"] = ("mean_tariff_z_x_post", a1)
+print(a1.summary())
+
+# -- Number of products targeted --
+# Measures the breadth of tariff coverage within an industry
+# More products hit = more of the industry's supply chain is affected
+print("\n--- A2: Number of products targeted (z-scored) ---")
+a2 = pf.feols(
+    f"etr_winsorized ~ products_x_post + {CONTROLS} | cik + year",
+    data=df, vcov={"CRV1": "naics3_str"},
+)
+alt_measures["A2: N products (z)"] = ("products_x_post", a2)
+print(a2.summary())
+
+# -- Number of varieties targeted --
+# Measures product x country combinations, captures import diversity
+# Primary Metals has 14,093 varieties vs 1,147 products (many source countries)
+print("\n--- A3: Number of varieties targeted (z-scored) ---")
+a3 = pf.feols(
+    f"etr_winsorized ~ varieties_x_post + {CONTROLS} | cik + year",
+    data=df, vcov={"CRV1": "naics3_str"},
+)
+alt_measures["A3: N varieties (z)"] = ("varieties_x_post", a3)
+print(a3.summary())
+
+# -- SD of tariff increase --
+# Measures within-industry dispersion in tariff rates
+# Higher SD = more heterogeneous tariff exposure within the industry
+print("\n--- A4: SD of tariff increase (z-scored) ---")
+a4 = pf.feols(
+    f"etr_winsorized ~ sd_tariff_x_post + {CONTROLS} | cik + year",
+    data=df, vcov={"CRV1": "naics3_str"},
+)
+alt_measures["A4: SD tariff (z)"] = ("sd_tariff_x_post", a4)
+print(a4.summary())
+
+# Summary of alternative measures
+print(f"\n{'=' * 65}")
+print("ALTERNATIVE MEASURES SUMMARY (all standardized)")
+print("=" * 65)
+alt_header = f"{'Measure':<25} {'Coef':>8} {'SE':>8} {'p-val':>8} {'N':>7}"
+print(alt_header)
+print("-" * len(alt_header))
+for label, (param, m) in alt_measures.items():
+    c = m.coef()[param]
+    s = m.se()[param]
+    p = m.pvalue()[param]
+    n = m._N
+    print(f"{label:<25} {c:>8.1f} {s:>8.1f} {p:>8.3f} {n:>7}")
+print("-" * len(alt_header))
 
 
 # -----------------------------------------------------------------------
