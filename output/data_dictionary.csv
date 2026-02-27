@@ -10,11 +10,11 @@ naics3,NAICS 3-digit industry code (used to merge with tariff data),Derived from
 icb_subsector,Industry Classification Benchmark subsector name,Bloomberg Terminal,classification,str,14380,20,0.1,148
 market_cap,"Market capitalization in USD (raw dollars, not millions; most recent available)",Bloomberg Terminal,firm characteristic,float64,14400,0,0.0,1675
 price,Most recent stock price in USD,Bloomberg Terminal,firm characteristic,float64,14400,0,0.0,1597
-foreign_pretax_income,Pre-tax income from foreign operations (USD millions). Directly from XBRL tag or computed as Total - Domestic.,SEC EDGAR XBRL (IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign),key variable,float64,9382,5018,34.8,7858
+foreign_pretax_income,Pre-tax income from foreign operations (USD millions). Directly from XBRL tag or computed as Total - Domestic.,SEC EDGAR XBRL (IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign),key variable,float64,9382,5018,34.8,7857
 domestic_pretax_income,Pre-tax income from domestic (US) operations (USD millions),SEC EDGAR XBRL (IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic),key variable,float64,9259,5141,35.7,8598
-total_pretax_income,Total pre-tax income from all operations (USD millions),SEC EDGAR XBRL (IncomeLossFromContinuingOperationsBeforeIncomeTaxes...),key variable,float64,14181,219,1.5,13394
-foreign_profit_share,Foreign Profit Share = Foreign Pre-Tax Income / Total Pre-Tax Income. Used as robustness check outcome (R10).,Computed from SEC EDGAR data,key variable,float64,9282,5118,35.5,9044
-foreign_profit_share_winsorized,Foreign Profit Share winsorized at 1st and 99th percentiles to reduce outlier influence,Computed,key variable,float64,9282,5118,35.5,8860
+total_pretax_income,Total pre-tax income from all operations (USD millions),SEC EDGAR XBRL (IncomeLossFromContinuingOperationsBeforeIncomeTaxes...),key variable,float64,14181,219,1.5,13393
+foreign_profit_share,Foreign Profit Share = Foreign Pre-Tax Income / Total Pre-Tax Income. Used as robustness check outcome (R10).,Computed from SEC EDGAR data,key variable,float64,9139,5261,36.5,8905
+foreign_profit_share_winsorized,Foreign Profit Share winsorized at 1st and 99th percentiles to reduce outlier influence,Computed,key variable,float64,9139,5261,36.5,8723
 fps_extreme,Flag (True/False) indicating original FPS was outside 1st-99th percentile range,Computed,flag,bool,14400,0,0.0,2
 total_revenue,Total revenue in USD millions (annual),Bloomberg Terminal,financial variable,float64,13634,766,5.3,13212
 pretax_income_bloomberg,Pre-tax income in USD millions from Bloomberg (annual). Serves as cross-check against SEC EDGAR total_pretax_income.,Bloomberg Terminal,financial variable,float64,14289,111,0.8,13600

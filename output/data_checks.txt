@@ -23,11 +23,11 @@ DATA QUALITY CHECKS
    foreign_pretax_income: 5018 missing (34.8%)
    domestic_pretax_income: 5141 missing (35.7%)
    total_pretax_income: 219 missing (1.5%)
-   foreign_profit_share: 5118 missing (35.5%)
+   foreign_profit_share: 5261 missing (36.5%)
    mean_tariff_increase: 7067 missing (49.1%)
 
 3. NEGATIVE INCOME VALUES
-   Firms with negative total pre-tax income: 3955 (27.5%)
+   Firms with negative total pre-tax income: 3956 (27.5%)
    Note: Negative income is valid (firms can have losses)
 
 4. EFFECTIVE TAX RATE DISTRIBUTION (main outcome)
@@ -44,9 +44,9 @@ DATA QUALITY CHECKS
    Note: Extreme ETRs are driven by firms with very small pre-tax income
 
 4b. FOREIGN PROFIT SHARE DISTRIBUTION (robustness outcome)
-   Obs with FPS > 1 (foreign > total): 1087
-   Obs with FPS < 0 (negative foreign or total): 1878
-   Obs with FPS in [0, 1] (normal range): 6317
+   Obs with FPS > 1 (foreign > total): 1067
+   Obs with FPS < 0 (negative foreign or total): 1834
+   Obs with FPS in [0, 1] (normal range): 6238
    Note: FPS outside [0,1] occurs when domestic or foreign income is negative
 
 5. DUPLICATE CHECK
@@ -61,9 +61,9 @@ DATA QUALITY CHECKS
 
 7. ACCOUNTING IDENTITY CHECK (Foreign + Domestic ≈ Total)
    Obs with all three income vars: 9040
-   Mean residual: 0.36
+   Mean residual: -0.17
    Max absolute residual: 10166.00
-   Obs where |residual| > 1000: 10
+   Obs where |residual| > 1000: 9
 
 8. EFFECTIVE TAX RATE COVERAGE BY YEAR
    2015: 909 / 1172 firms (77.6%)
@@ -78,13 +78,13 @@ DATA QUALITY CHECKS
    2024: 1227 / 1637 firms (75.0%)
 
 9. FOREIGN PROFIT SHARE COVERAGE BY YEAR
-   2015: 733 / 1172 firms (62.5%)
-   2016: 782 / 1232 firms (63.5%)
-   2017: 815 / 1291 firms (63.1%)
-   2018: 850 / 1338 firms (63.5%)
-   2019: 920 / 1442 firms (63.8%)
-   2020: 953 / 1477 firms (64.5%)
-   2021: 1011 / 1567 firms (64.5%)
-   2022: 1053 / 1606 firms (65.6%)
-   2023: 1087 / 1638 firms (66.4%)
-   2024: 1078 / 1637 firms (65.9%)
+   2015: 720 / 1172 firms (61.4%)
+   2016: 768 / 1232 firms (62.3%)
+   2017: 801 / 1291 firms (62.0%)
+   2018: 832 / 1338 firms (62.2%)
+   2019: 905 / 1442 firms (62.8%)
+   2020: 936 / 1477 firms (63.4%)
+   2021: 1001 / 1567 firms (63.9%)
+   2022: 1039 / 1606 firms (64.7%)
+   2023: 1069 / 1638 firms (65.3%)
+   2024: 1068 / 1637 firms (65.2%)

@@ -205,12 +205,25 @@ def build_panel(raw_data):
     print("\nStep 4: Building firm-year panel...")
     df = raw_data.copy()
 
-    # Combine the two total income tags (v1 is newer, v2 is older)
-    df["tag_label"] = df["tag_label"].replace({"total_v1": "total", "total_v2": "total"})
-
     # For each firm-year-tag, keep the most recently filed value
     df = df.sort_values("filed", ascending=False)
     df = df.drop_duplicates(subset=["cik", "data_year", "tag_label"], keep="first")
+
+    # Prefer total_v1 over total_v2 (they measure slightly different things:
+    #   v1 = ...ExtraordinaryItemsNoncontrollingInterest (modern standard)
+    #   v2 = ...MinorityInterestAndIncomeLossFromEquityMethodInvestments
+    # When both exist for the same firm-year, keep only v1 for consistency.)
+    has_v1 = df[df["tag_label"] == "total_v1"][["cik", "data_year"]].drop_duplicates()
+    has_v1["_has_v1"] = True
+    df = df.merge(has_v1, on=["cik", "data_year"], how="left")
+    df = df[~((df["tag_label"] == "total_v2") & (df["_has_v1"] == True))]
+    df = df.drop(columns=["_has_v1"])
+
+    n_dropped_v2 = has_v1["_has_v1"].sum()  # firm-years where v2 was dropped
+    print(f"  Preferred total_v1 over total_v2 for {len(has_v1)} firm-years (dropped v2 duplicates)")
+
+    # Now rename both to a single "total" label
+    df["tag_label"] = df["tag_label"].replace({"total_v1": "total", "total_v2": "total"})
 
     # Pivot to wide
     panel = df.pivot_table(
@@ -250,6 +263,27 @@ def build_panel(raw_data):
         panel["foreign_pretax_income"] / panel["total_pretax_income"],
         np.nan
     )
+
+    # Accounting identity check: Foreign + Domestic should ≈ Total.
+    # When the identity fails by more than 5% of |Total|, the income
+    # breakdown is unreliable (restatements, sign errors, tag mismatches).
+    # Null out FPS for these observations.
+    has_all_three = (
+        panel["foreign_pretax_income"].notna() &
+        panel["domestic_pretax_income"].notna() &
+        panel["total_pretax_income"].notna() &
+        (panel["total_pretax_income"] != 0)
+    )
+    residual = (
+        panel["foreign_pretax_income"] + panel["domestic_pretax_income"]
+        - panel["total_pretax_income"]
+    )
+    pct_error = residual.abs() / panel["total_pretax_income"].abs()
+    identity_fails = has_all_three & (pct_error > 0.05)
+    n_fails = identity_fails.sum()
+    panel.loc[identity_fails, "foreign_profit_share"] = np.nan
+    print(f"  Accounting identity check: nulled FPS for {n_fails} obs "
+          f"where |Foreign + Domestic - Total| > 5% of |Total|")
 
     panel = panel.sort_values(["cik", "year"]).reset_index(drop=True)
     return panel
