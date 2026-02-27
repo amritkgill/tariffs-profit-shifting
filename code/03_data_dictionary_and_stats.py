@@ -75,7 +75,7 @@ def create_data_dictionary(df):
             "type": "classification",
         },
         "market_cap": {
-            "description": "Market capitalization in USD (most recent available)",
+            "description": "Market capitalization in USD (raw dollars, not millions; most recent available)",
             "source": "Bloomberg Terminal",
             "type": "firm characteristic",
         },
@@ -85,22 +85,22 @@ def create_data_dictionary(df):
             "type": "firm characteristic",
         },
         "foreign_pretax_income": {
-            "description": "Pre-tax income from foreign operations (USD). Directly from XBRL tag or computed as Total - Domestic.",
+            "description": "Pre-tax income from foreign operations (USD millions). Directly from XBRL tag or computed as Total - Domestic.",
             "source": "SEC EDGAR XBRL (IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign)",
             "type": "key variable",
         },
         "domestic_pretax_income": {
-            "description": "Pre-tax income from domestic (US) operations (USD)",
+            "description": "Pre-tax income from domestic (US) operations (USD millions)",
             "source": "SEC EDGAR XBRL (IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic)",
             "type": "key variable",
         },
         "total_pretax_income": {
-            "description": "Total pre-tax income from all operations (USD)",
+            "description": "Total pre-tax income from all operations (USD millions)",
             "source": "SEC EDGAR XBRL (IncomeLossFromContinuingOperationsBeforeIncomeTaxes...)",
             "type": "key variable",
         },
         "foreign_profit_share": {
-            "description": "Foreign Profit Share = Foreign Pre-Tax Income / Total Pre-Tax Income. Main variable of interest.",
+            "description": "Foreign Profit Share = Foreign Pre-Tax Income / Total Pre-Tax Income. Used as robustness check outcome (R10).",
             "source": "Computed from SEC EDGAR data",
             "type": "key variable",
         },
@@ -140,42 +140,42 @@ def create_data_dictionary(df):
             "type": "tariff variable",
         },
         "total_revenue": {
-            "description": "Total revenue in USD (annual)",
+            "description": "Total revenue in USD millions (annual)",
             "source": "Bloomberg Terminal",
             "type": "financial variable",
         },
         "pretax_income_bloomberg": {
-            "description": "Pre-tax income in USD from Bloomberg (annual). Serves as cross-check against SEC EDGAR total_pretax_income.",
+            "description": "Pre-tax income in USD millions from Bloomberg (annual). Serves as cross-check against SEC EDGAR total_pretax_income.",
             "source": "Bloomberg Terminal",
             "type": "financial variable",
         },
         "rd_expense": {
-            "description": "Research and development expense in USD (annual)",
+            "description": "Research and development expense in USD millions (annual)",
             "source": "Bloomberg Terminal",
             "type": "financial variable",
         },
         "total_assets": {
-            "description": "Total assets in USD (annual)",
+            "description": "Total assets in USD millions (annual)",
             "source": "Bloomberg Terminal",
             "type": "financial variable",
         },
         "total_debt": {
-            "description": "Total debt (short-term + long-term) in USD (annual)",
+            "description": "Total debt (short-term + long-term) in USD millions (annual)",
             "source": "Bloomberg Terminal",
             "type": "financial variable",
         },
         "capital_expenditure": {
-            "description": "Capital expenditure in USD (annual, typically negative as cash outflow)",
+            "description": "Capital expenditure in USD millions (annual, typically negative as cash outflow)",
             "source": "Bloomberg Terminal",
             "type": "financial variable",
         },
         "effective_tax_rate": {
-            "description": "Effective tax rate as a percentage (annual)",
+            "description": "Effective tax rate as a percentage (annual). Main outcome variable — winsorized/trimmed variants constructed in regression script.",
             "source": "Bloomberg Terminal",
-            "type": "financial variable",
+            "type": "key variable",
         },
         "operating_expenses": {
-            "description": "Total operating expenses in USD (annual)",
+            "description": "Total operating expenses in USD millions (annual)",
             "source": "Bloomberg Terminal",
             "type": "financial variable",
         },
@@ -211,10 +211,11 @@ def create_summary_statistics(df):
 
     numeric_cols = [
         "market_cap", "price",
+        "effective_tax_rate",
         "foreign_pretax_income", "domestic_pretax_income", "total_pretax_income",
         "foreign_profit_share", "foreign_profit_share_winsorized",
         "total_revenue", "pretax_income_bloomberg", "rd_expense", "total_assets",
-        "total_debt", "capital_expenditure", "effective_tax_rate", "operating_expenses",
+        "total_debt", "capital_expenditure", "operating_expenses",
         "n_products_targeted", "n_varieties_targeted",
         "mean_tariff_increase", "sd_tariff_increase",
     ]
@@ -229,8 +230,8 @@ def create_summary_statistics(df):
 
     # Print to console
     print("\n  Key variable statistics:")
-    key_vars = ["foreign_profit_share", "foreign_profit_share_winsorized",
-                "mean_tariff_increase", "total_pretax_income"]
+    key_vars = ["effective_tax_rate", "mean_tariff_increase",
+                "foreign_profit_share", "total_pretax_income"]
     key_vars = [v for v in key_vars if v in stats.index]
     print(stats.loc[key_vars, ["count", "mean", "std", "min", "50%", "max", "n_missing"]].to_string())
 
@@ -279,11 +280,28 @@ def run_data_checks(df):
         checks.append(f"   Firms with negative total pre-tax income: {n_neg} ({n_neg/len(df)*100:.1f}%)")
         checks.append("   Note: Negative income is valid (firms can have losses)")
 
-    # Check 4: Foreign profit share bounds
+    # Check 4: Effective tax rate distribution (main outcome variable)
+    if "effective_tax_rate" in df.columns:
+        etr = df["effective_tax_rate"].dropna()
+        checks.append("")
+        checks.append("4. EFFECTIVE TAX RATE DISTRIBUTION (main outcome)")
+        checks.append(f"   Obs with ETR data: {len(etr)} ({len(etr)/len(df)*100:.1f}%)")
+        checks.append(f"   Mean: {etr.mean():.1f}%   Median: {etr.median():.1f}%")
+        checks.append(f"   Min: {etr.min():.1f}%   Max: {etr.max():.1f}%")
+        checks.append(f"   Obs with ETR < 0: {(etr < 0).sum()}")
+        checks.append(f"   Obs with ETR > 100: {(etr > 100).sum()}")
+        checks.append(f"   Obs with ETR > 200: {(etr > 200).sum()}")
+        checks.append(f"   Obs in [0, 60] (normal range): {((etr >= 0) & (etr <= 60)).sum()}")
+        checks.append(f"   Winsorization cutoffs:")
+        checks.append(f"     p1/p99: [{etr.quantile(0.01):.1f}, {etr.quantile(0.99):.1f}]")
+        checks.append(f"     p5/p95: [{etr.quantile(0.05):.1f}, {etr.quantile(0.95):.1f}]")
+        checks.append(f"   Note: Extreme ETRs are driven by firms with very small pre-tax income")
+
+    # Check 4b: Foreign profit share bounds (robustness outcome)
     if "foreign_profit_share" in df.columns:
         fps = df["foreign_profit_share"].dropna()
         checks.append("")
-        checks.append("4. FOREIGN PROFIT SHARE DISTRIBUTION")
+        checks.append("4b. FOREIGN PROFIT SHARE DISTRIBUTION (robustness outcome)")
         checks.append(f"   Obs with FPS > 1 (foreign > total): {(fps > 1).sum()}")
         checks.append(f"   Obs with FPS < 0 (negative foreign or total): {(fps < 0).sum()}")
         checks.append(f"   Obs with FPS in [0, 1] (normal range): {((fps >= 0) & (fps <= 1)).sum()}")
@@ -321,9 +339,19 @@ def run_data_checks(df):
         checks.append(f"   Max absolute residual: {sub['residual'].abs().max():.2f}")
         checks.append(f"   Obs where |residual| > 1000: {(sub['residual'].abs() > 1000).sum()}")
 
-    # Check 8: Year coverage by key variable
+    # Check 8: Year coverage by key variables
     checks.append("")
-    checks.append("8. FOREIGN PROFIT SHARE COVERAGE BY YEAR")
+    checks.append("8. EFFECTIVE TAX RATE COVERAGE BY YEAR")
+    if "effective_tax_rate" in df.columns:
+        etr_by_year = df.groupby("year")["effective_tax_rate"].apply(lambda x: x.notna().sum())
+        total_by_year = df.groupby("year").size()
+        for yr in sorted(df["year"].unique()):
+            n_etr = etr_by_year.get(yr, 0)
+            n_total = total_by_year.get(yr, 0)
+            checks.append(f"   {yr}: {n_etr} / {n_total} firms ({n_etr/n_total*100:.1f}%)")
+
+    checks.append("")
+    checks.append("9. FOREIGN PROFIT SHARE COVERAGE BY YEAR")
     fps_by_year = df.groupby("year")["foreign_profit_share"].apply(lambda x: x.notna().sum())
     total_by_year = df.groupby("year").size()
     for yr in sorted(df["year"].unique()):

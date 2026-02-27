@@ -8,22 +8,22 @@ sic_code,Standard Industrial Classification code (4-digit),Bloomberg Terminal,cl
 naics_code,North American Industry Classification System code (6-digit),Bloomberg Terminal,classification,int64,14400,0,0.0,330
 naics3,NAICS 3-digit industry code (used to merge with tariff data),Derived from naics_code,classification,int64,14400,0,0.0,71
 icb_subsector,Industry Classification Benchmark subsector name,Bloomberg Terminal,classification,str,14380,20,0.1,148
-market_cap,Market capitalization in USD (most recent available),Bloomberg Terminal,firm characteristic,float64,14400,0,0.0,1675
+market_cap,"Market capitalization in USD (raw dollars, not millions; most recent available)",Bloomberg Terminal,firm characteristic,float64,14400,0,0.0,1675
 price,Most recent stock price in USD,Bloomberg Terminal,firm characteristic,float64,14400,0,0.0,1597
-foreign_pretax_income,Pre-tax income from foreign operations (USD). Directly from XBRL tag or computed as Total - Domestic.,SEC EDGAR XBRL (IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign),key variable,float64,9382,5018,34.8,7858
-domestic_pretax_income,Pre-tax income from domestic (US) operations (USD),SEC EDGAR XBRL (IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic),key variable,float64,9259,5141,35.7,8598
-total_pretax_income,Total pre-tax income from all operations (USD),SEC EDGAR XBRL (IncomeLossFromContinuingOperationsBeforeIncomeTaxes...),key variable,float64,14181,219,1.5,13394
-foreign_profit_share,Foreign Profit Share = Foreign Pre-Tax Income / Total Pre-Tax Income. Main variable of interest.,Computed from SEC EDGAR data,key variable,float64,9282,5118,35.5,9044
+foreign_pretax_income,Pre-tax income from foreign operations (USD millions). Directly from XBRL tag or computed as Total - Domestic.,SEC EDGAR XBRL (IncomeLossFromContinuingOperationsBeforeIncomeTaxesForeign),key variable,float64,9382,5018,34.8,7858
+domestic_pretax_income,Pre-tax income from domestic (US) operations (USD millions),SEC EDGAR XBRL (IncomeLossFromContinuingOperationsBeforeIncomeTaxesDomestic),key variable,float64,9259,5141,35.7,8598
+total_pretax_income,Total pre-tax income from all operations (USD millions),SEC EDGAR XBRL (IncomeLossFromContinuingOperationsBeforeIncomeTaxes...),key variable,float64,14181,219,1.5,13394
+foreign_profit_share,Foreign Profit Share = Foreign Pre-Tax Income / Total Pre-Tax Income. Used as robustness check outcome (R10).,Computed from SEC EDGAR data,key variable,float64,9282,5118,35.5,9044
 foreign_profit_share_winsorized,Foreign Profit Share winsorized at 1st and 99th percentiles to reduce outlier influence,Computed,key variable,float64,9282,5118,35.5,8860
 fps_extreme,Flag (True/False) indicating original FPS was outside 1st-99th percentile range,Computed,flag,bool,14400,0,0.0,2
-total_revenue,Total revenue in USD (annual),Bloomberg Terminal,financial variable,float64,13624,776,5.4,13203
-pretax_income_bloomberg,Pre-tax income in USD from Bloomberg (annual). Serves as cross-check against SEC EDGAR total_pretax_income.,Bloomberg Terminal,financial variable,float64,14279,121,0.8,13592
-rd_expense,Research and development expense in USD (annual),Bloomberg Terminal,financial variable,float64,12438,1962,13.6,6136
-total_assets,Total assets in USD (annual),Bloomberg Terminal,financial variable,float64,14284,116,0.8,14195
-total_debt,Total debt (short-term + long-term) in USD (annual),Bloomberg Terminal,financial variable,float64,14271,129,0.9,13066
-capital_expenditure,"Capital expenditure in USD (annual, typically negative as cash outflow)",Bloomberg Terminal,financial variable,float64,14251,149,1.0,12136
-effective_tax_rate,Effective tax rate as a percentage (annual),Bloomberg Terminal,financial variable,float64,10544,3856,26.8,9796
-operating_expenses,Total operating expenses in USD (annual),Bloomberg Terminal,financial variable,float64,14252,148,1.0,13670
+total_revenue,Total revenue in USD millions (annual),Bloomberg Terminal,financial variable,float64,13634,766,5.3,13212
+pretax_income_bloomberg,Pre-tax income in USD millions from Bloomberg (annual). Serves as cross-check against SEC EDGAR total_pretax_income.,Bloomberg Terminal,financial variable,float64,14289,111,0.8,13600
+rd_expense,Research and development expense in USD millions (annual),Bloomberg Terminal,financial variable,float64,12448,1952,13.6,6145
+total_assets,Total assets in USD millions (annual),Bloomberg Terminal,financial variable,float64,14294,106,0.7,14204
+total_debt,Total debt (short-term + long-term) in USD millions (annual),Bloomberg Terminal,financial variable,float64,14281,119,0.8,13073
+capital_expenditure,"Capital expenditure in USD millions (annual, typically negative as cash outflow)",Bloomberg Terminal,financial variable,float64,14261,139,1.0,12140
+effective_tax_rate,Effective tax rate as a percentage (annual). Main outcome variable — winsorized/trimmed variants constructed in regression script.,Bloomberg Terminal,key variable,float64,10554,3846,26.7,9804
+operating_expenses,Total operating expenses in USD millions (annual),Bloomberg Terminal,financial variable,float64,14262,138,1.0,13677
 sector_name,NAICS-3 sector name from tariff exposure data,Section 301 tariff data,tariff variable,str,7333,7067,49.1,24
 n_products_targeted,Number of HS-8 products targeted by Section 301 tariffs in this NAICS-3 industry,Section 301 tariff data,tariff variable,float64,7333,7067,49.1,24
 n_varieties_targeted,Number of product varieties (HS-8 x country) targeted by Section 301 tariffs,Section 301 tariff data,tariff variable,float64,7333,7067,49.1,24

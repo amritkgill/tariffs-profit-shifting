@@ -30,7 +30,20 @@ DATA QUALITY CHECKS
    Firms with negative total pre-tax income: 3955 (27.5%)
    Note: Negative income is valid (firms can have losses)
 
-4. FOREIGN PROFIT SHARE DISTRIBUTION
+4. EFFECTIVE TAX RATE DISTRIBUTION (main outcome)
+   Obs with ETR data: 10554 (73.3%)
+   Mean: 48.2%   Median: 22.8%
+   Min: 0.0%   Max: 138325.0%
+   Obs with ETR < 0: 0
+   Obs with ETR > 100: 257
+   Obs with ETR > 200: 120
+   Obs in [0, 60] (normal range): 10024
+   Winsorization cutoffs:
+     p1/p99: [0.0, 236.5]
+     p5/p95: [0.5, 60.2]
+   Note: Extreme ETRs are driven by firms with very small pre-tax income
+
+4b. FOREIGN PROFIT SHARE DISTRIBUTION (robustness outcome)
    Obs with FPS > 1 (foreign > total): 1087
    Obs with FPS < 0 (negative foreign or total): 1878
    Obs with FPS in [0, 1] (normal range): 6317
@@ -48,11 +61,23 @@ DATA QUALITY CHECKS
 
 7. ACCOUNTING IDENTITY CHECK (Foreign + Domestic ≈ Total)
    Obs with all three income vars: 9040
-   Mean residual: 360136.35
-   Max absolute residual: 10166000000.00
-   Obs where |residual| > 1000: 368
+   Mean residual: 0.36
+   Max absolute residual: 10166.00
+   Obs where |residual| > 1000: 10
 
-8. FOREIGN PROFIT SHARE COVERAGE BY YEAR
+8. EFFECTIVE TAX RATE COVERAGE BY YEAR
+   2015: 909 / 1172 firms (77.6%)
+   2016: 960 / 1232 firms (77.9%)
+   2017: 907 / 1291 firms (70.3%)
+   2018: 966 / 1338 firms (72.2%)
+   2019: 1041 / 1442 firms (72.2%)
+   2020: 963 / 1477 firms (65.2%)
+   2021: 1146 / 1567 firms (73.1%)
+   2022: 1220 / 1606 firms (76.0%)
+   2023: 1215 / 1638 firms (74.2%)
+   2024: 1227 / 1637 firms (75.0%)
+
+9. FOREIGN PROFIT SHARE COVERAGE BY YEAR
    2015: 733 / 1172 firms (62.5%)
    2016: 782 / 1232 firms (63.5%)
    2017: 815 / 1291 firms (63.1%)

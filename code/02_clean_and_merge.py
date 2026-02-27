@@ -106,8 +106,8 @@ def load_bloomberg_timeseries():
 
     for sheet_name, col_name in BLOOMBERG_TS_SHEETS.items():
         df = pd.read_excel(xlsx_path, sheet_name=sheet_name)
-        # First row is sometimes a header/count row (same as firm_universe)
-        df = df.iloc[1:].reset_index(drop=True)
+        # Note: unlike firm_universe, time-series sheets do NOT have a
+        # junk header row. Row 0 is real data (e.g., NVDA).
 
         # Extract clean ticker
         df["clean_ticker"] = (
@@ -197,6 +197,12 @@ def clean_sec_panel():
         print(f"  Dropped {n_dropped} duplicate CIK-year rows")
     print(f"  Observations (2015-2024): {len(panel)}")
 
+    # Convert SEC income from raw dollars to millions (matching Bloomberg scale)
+    income_cols = ["foreign_pretax_income", "domestic_pretax_income", "total_pretax_income"]
+    for col in income_cols:
+        panel[col] = panel[col] / 1e6
+    print(f"  Converted income columns to USD millions (matching Bloomberg scale)")
+
     # Winsorize foreign_profit_share at 1st and 99th percentiles
     fps = panel["foreign_profit_share"]
     p01 = fps.quantile(0.01)
@@ -225,13 +231,17 @@ def merge_all(firm_df, sec_panel, tariff_df, bloomberg_ts):
     print("\nStep 5: Merging all datasets...")
 
     # Merge firm characteristics with SEC income panel on CIK
+    n_sec_firms_before = sec_panel["cik"].nunique()
     merged = sec_panel.merge(
         firm_df,
         on="cik",
         how="inner",
         suffixes=("_sec", "_bloom")
     )
-    print(f"  After firm-SEC merge: {len(merged)} obs, {merged['cik'].nunique()} firms")
+    n_sec_firms_after = merged["cik"].nunique()
+    print(f"  After firm-SEC merge: {len(merged)} obs, {n_sec_firms_after} firms")
+    if n_sec_firms_after < n_sec_firms_before:
+        print(f"  WARNING: Lost {n_sec_firms_before - n_sec_firms_after} SEC firms in inner join")
 
     # Add Bloomberg time-series financials on (clean_ticker, year)
     n_before = len(merged)
@@ -240,7 +250,11 @@ def merge_all(firm_df, sec_panel, tariff_df, bloomberg_ts):
         on=["clean_ticker", "year"],
         how="left"
     )
-    print(f"  After Bloomberg time-series merge: {len(merged)} obs (should be same: {n_before})")
+    assert len(merged) == n_before, (
+        f"Bloomberg TS merge changed row count: {n_before} -> {len(merged)}. "
+        f"This suggests a many-to-many join — check for duplicate tickers."
+    )
+    print(f"  After Bloomberg time-series merge: {len(merged)} obs (unchanged, good)")
     ts_cols = list(BLOOMBERG_TS_SHEETS.values())
     for col in ts_cols:
         n_filled = merged[col].notna().sum()
@@ -248,11 +262,16 @@ def merge_all(firm_df, sec_panel, tariff_df, bloomberg_ts):
 
     # Add tariff exposure by NAICS-3
     tariff_df["naics3"] = tariff_df["naics3"].astype("Int64")
+    n_before_tariff = len(merged)
     merged = merged.merge(
         tariff_df[["naics3", "sector_name", "n_products_targeted", "n_varieties_targeted",
                     "mean_tariff_increase", "sd_tariff_increase"]],
         on="naics3",
         how="left"
+    )
+    assert len(merged) == n_before_tariff, (
+        f"Tariff merge changed row count: {n_before_tariff} -> {len(merged)}. "
+        f"Check for duplicate NAICS-3 codes in tariff data."
     )
     has_tariff = merged["mean_tariff_increase"].notna().sum()
     print(f"  Obs matched to tariff data: {has_tariff} ({has_tariff/len(merged)*100:.1f}%)")
@@ -310,24 +329,91 @@ if __name__ == "__main__":
     final.to_csv(PROCESSED_DIR / "merged_panel.csv", index=False)
     print(f"\nFinal dataset saved to data/processed/merged_panel.csv")
 
+    # -----------------------------------------------------------------------
+    # Data quality checks
+    # -----------------------------------------------------------------------
+    print(f"\n{'=' * 65}")
+    print("DATA QUALITY CHECKS")
+    print(f"{'=' * 65}")
+
+    # Check 1: No duplicate firm-years
+    n_dup = final.duplicated(subset=["cik", "year"]).sum()
+    assert n_dup == 0, f"FAIL: {n_dup} duplicate cik-year rows found"
+    print(f"  [PASS] No duplicate firm-year observations")
+
+    # Check 2: Year range is 2015-2024
+    assert final["year"].min() >= 2015, f"FAIL: min year = {final['year'].min()}"
+    assert final["year"].max() <= 2024, f"FAIL: max year = {final['year'].max()}"
+    print(f"  [PASS] Year range: {final['year'].min()}-{final['year'].max()}")
+
+    # Check 3: Key identifier columns have no nulls
+    for col in ["cik", "clean_ticker", "year"]:
+        n_null = final[col].isna().sum()
+        assert n_null == 0, f"FAIL: {col} has {n_null} nulls"
+    print(f"  [PASS] No nulls in cik, clean_ticker, year")
+
+    # Check 4: NVDA has Bloomberg data (catches iloc[1:] regression)
+    nvda = final[final["clean_ticker"] == "NVDA"]
+    if len(nvda) > 0:
+        nvda_has_rev = nvda["total_revenue"].notna().sum()
+        nvda_has_etr = nvda["effective_tax_rate"].notna().sum()
+        print(f"  [INFO] NVDA: {len(nvda)} rows, {nvda_has_rev} with revenue, {nvda_has_etr} with ETR")
+        if nvda_has_rev == 0:
+            print(f"  [WARN] NVDA has no Bloomberg time-series data — iloc bug may persist")
+    else:
+        print(f"  [WARN] NVDA not found in dataset")
+
+    # Check 5: SEC income values are in millions (spot check)
+    max_income = final["total_pretax_income"].abs().max()
+    if max_income > 1e6:
+        print(f"  [WARN] Max |total_pretax_income| = {max_income:,.0f} — "
+              f"expected millions, this looks like raw dollars")
+    else:
+        print(f"  [PASS] total_pretax_income in millions (max abs = {max_income:,.0f})")
+
+    # Check 6: Bloomberg financials present for most firms
+    bloomberg_cols = ["total_revenue", "effective_tax_rate", "total_assets"]
+    for col in bloomberg_cols:
+        n_notna = final[col].notna().sum()
+        pct = n_notna / len(final) * 100
+        status = "[PASS]" if pct > 50 else "[WARN]"
+        print(f"  {status} {col}: {n_notna:,} non-null ({pct:.1f}%)")
+
+    # Check 7: Count firms with ALL Bloomberg TS missing
+    ts_cols = ["total_revenue", "pretax_income_bloomberg", "rd_expense",
+               "total_assets", "total_debt", "capital_expenditure",
+               "effective_tax_rate", "operating_expenses"]
+    all_ts_null = final[ts_cols].isna().all(axis=1)
+    firms_all_null = final.loc[all_ts_null, "clean_ticker"].nunique()
+    print(f"  [INFO] {firms_all_null} firms have zero Bloomberg time-series data (source gap)")
+
+    # -----------------------------------------------------------------------
     # Summary
+    # -----------------------------------------------------------------------
     print(f"\n{'=' * 65}")
     print("FINAL DATASET SUMMARY")
     print(f"{'=' * 65}")
     print(f"Total observations:            {len(final)}")
     print(f"Unique firms:                  {final['cik'].nunique()}")
     print(f"Year range:                    {final['year'].min()} - {final['year'].max()}")
+    print(f"Obs with ETR (main outcome):   {final['effective_tax_rate'].notna().sum()}")
     print(f"Obs with foreign profit share: {final['foreign_profit_share'].notna().sum()}")
     print(f"Obs with tariff exposure:      {final['mean_tariff_increase'].notna().sum()}")
-    print(f"Obs with BOTH FPS & tariff:    {(final['foreign_profit_share'].notna() & final['mean_tariff_increase'].notna()).sum()}")
 
     print(f"\nFirms per year:")
     print(final.groupby("year")["cik"].nunique().to_string())
 
-    print(f"\nForeign Profit Share (winsorized) stats:")
-    print(final["foreign_profit_share_winsorized"].describe().to_string())
+    print(f"\nEffective Tax Rate stats:")
+    print(final["effective_tax_rate"].describe().to_string())
 
     print(f"\nTop 10 industries by firm count:")
     if "sector_name" in final.columns:
         top_sectors = final.groupby("sector_name")["cik"].nunique().sort_values(ascending=False).head(10)
         print(top_sectors.to_string())
+
+    # Document known data gaps
+    print(f"\nKNOWN DATA GAPS (source data, not bugs):")
+    print(f"  - 2017 total_revenue: ~75% missing in Bloomberg source data")
+    print(f"  - ~{firms_all_null} firms have SEC data but no Bloomberg time-series coverage")
+    print(f"  - effective_tax_rate: {final['effective_tax_rate'].isna().sum()} missing ({final['effective_tax_rate'].isna().mean()*100:.1f}%)")
+    print(f"  - These gaps are handled by the regression (drops missing values)")
