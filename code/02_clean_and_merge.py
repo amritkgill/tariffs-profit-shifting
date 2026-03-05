@@ -352,16 +352,54 @@ if __name__ == "__main__":
         assert n_null == 0, f"FAIL: {col} has {n_null} nulls"
     print(f"  [PASS] No nulls in cik, clean_ticker, year")
 
-    # Check 4: NVDA has Bloomberg data (catches iloc[1:] regression)
-    nvda = final[final["clean_ticker"] == "NVDA"]
-    if len(nvda) > 0:
-        nvda_has_rev = nvda["total_revenue"].notna().sum()
-        nvda_has_etr = nvda["effective_tax_rate"].notna().sum()
-        print(f"  [INFO] NVDA: {len(nvda)} rows, {nvda_has_rev} with revenue, {nvda_has_etr} with ETR")
-        if nvda_has_rev == 0:
-            print(f"  [WARN] NVDA has no Bloomberg time-series data — iloc bug may persist")
-    else:
-        print(f"  [WARN] NVDA not found in dataset")
+    # Check 4: Spot-check multiple firms for Bloomberg data and SEC values
+    spot_check_tickers = ["NVDA", "VVV", "EVGO", "JCI", "KLC", "GEHC", "KN", "SANA", "STAA"]
+    for ticker in spot_check_tickers:
+        firm = final[final["clean_ticker"] == ticker]
+        if len(firm) > 0:
+            has_rev = firm["total_revenue"].notna().sum()
+            has_etr = firm["effective_tax_rate"].notna().sum()
+            has_sec = firm["total_pretax_income"].notna().sum()
+            print(f"  [INFO] {ticker}: {len(firm)} rows, {has_rev} with revenue, "
+                  f"{has_etr} with ETR, {has_sec} with SEC income")
+            if has_rev == 0:
+                print(f"  [WARN] {ticker} has no Bloomberg time-series data")
+        else:
+            print(f"  [WARN] {ticker} not found in dataset")
+
+    # Check 4b: Cross-validate merged SEC values against raw SEC data
+    # Verifies unit conversion (/1e6) and that most-recent-filing logic is correct
+    raw_sec = pd.read_csv(RAW_DIR / "sec_pretax_income_raw.csv")
+    n_checked = 0
+    n_failed = 0
+    for ticker in spot_check_tickers:
+        firm = final[final["clean_ticker"] == ticker]
+        if len(firm) == 0:
+            continue
+        cik = firm["cik"].iloc[0]
+        firm_raw = raw_sec[raw_sec["cik"] == cik]
+        if len(firm_raw) == 0:
+            continue
+        # Pick the most recent year with raw total data to check
+        for check_year in [2023, 2022, 2021]:
+            yr_raw = firm_raw[
+                (firm_raw["data_year"] == check_year)
+                & (firm_raw["tag_label"].isin(["total_v1", "total_v2"]))
+            ]
+            yr_merged = firm[firm["year"] == check_year]
+            if len(yr_raw) == 0 or len(yr_merged) == 0:
+                continue
+            # Most recent filing should match merged value
+            most_recent = yr_raw.sort_values("filed", ascending=False).iloc[0]
+            expected = most_recent["value"] / 1e6
+            actual = yr_merged["total_pretax_income"].iloc[0]
+            if pd.notna(actual) and abs(expected - actual) > 0.01:
+                print(f"  [FAIL] {ticker} FY{check_year}: raw={expected:,.1f}M vs merged={actual:,.1f}M")
+                n_failed += 1
+            n_checked += 1
+            break
+    status = "[PASS]" if n_failed == 0 else "[FAIL]"
+    print(f"  {status} SEC raw-vs-merged cross-validation: {n_checked} firms checked, {n_failed} mismatches")
 
     # Check 5: SEC income values are in millions (spot check)
     max_income = final["total_pretax_income"].abs().max()
