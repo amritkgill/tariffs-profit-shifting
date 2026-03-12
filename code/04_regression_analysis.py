@@ -10,6 +10,7 @@ Wild cluster bootstrap corrects for few clusters (24 industries).
 
 Robustness checks:
   - No controls
+  - TCJA control (pre-treatment foreign profit share x post-2018)
   - SIC 1-digit x year FE (broad industry trends)
   - NAICS-2 x year FE (aggressive industry trends, for comparison)
   - NAICS-2 linear time trends (less aggressive alternative)
@@ -40,7 +41,8 @@ OUTPUT_DIR = BASE_DIR / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 CONTROLS = "log_revenue + rd_intensity + leverage"
-MAIN_FORMULA = f"etr_winsorized ~ tariff_x_post + {CONTROLS} | cik + year"
+CONTROLS_TCJA = "log_revenue + rd_intensity + leverage + tcja_exposure"
+MAIN_FORMULA = f"etr_winsorized ~ tariff_x_post + {CONTROLS_TCJA} | cik + year"
 
 
 # -----------------------------------------------------------------------
@@ -83,6 +85,18 @@ df["etr_trim_60"] = df["effective_tax_rate"].where(
 )
 print(f"ETR trimmed [0,100]: {df['etr_trim_100'].notna().sum():,} obs")
 print(f"ETR trimmed [0,60]:  {df['etr_trim_60'].notna().sum():,} obs")
+
+# -- TCJA exposure control --
+# The Tax Cuts and Jobs Act (2017) changed international tax rules (GILTI, BEAT, FDII)
+# at the same time as tariffs. Firms with more pre-existing foreign operations were
+# differentially affected. We control for this by interacting each firm's pre-treatment
+# average foreign profit share with the post-2018 indicator.
+pre_fps = df[df["year"] <= 2017].groupby("cik")["foreign_profit_share"].mean()
+df["pre_fps"] = df["cik"].map(pre_fps)
+df["tcja_exposure"] = df["pre_fps"].fillna(0) * df["post2018"]
+n_tcja = df["pre_fps"].notna().sum()
+print(f"TCJA exposure: {n_tcja:,} obs with pre-treatment FPS, "
+      f"mean pre-FPS = {df['pre_fps'].mean():.3f}")
 
 # -- Interaction term --
 df["tariff_x_post"] = df["mean_tariff_increase"] * df["post2018"]
@@ -172,7 +186,7 @@ print("=" * 65)
 
 event_vars = [f"tariff_x_{y}" for y in years if y != 2017]
 event_formula = "etr_winsorized ~ " + " + ".join(event_vars)
-event_formula += f" + {CONTROLS} | cik + year"
+event_formula += f" + {CONTROLS_TCJA} | cik + year"
 
 model_event = pf.feols(event_formula, data=df, vcov={"CRV1": "naics3_str"})
 print(model_event.summary())
@@ -266,12 +280,21 @@ r1 = pf.feols(
 robustness["R1: No controls"] = r1
 print(r1.summary())
 
+# -- R1b: Without TCJA control (baseline comparison) --
+print("\n--- R1b: Without TCJA control (baseline comparison) ---")
+r1b = pf.feols(
+    f"etr_winsorized ~ tariff_x_post + {CONTROLS} | cik + year",
+    data=df, vcov={"CRV1": "naics3_str"},
+)
+robustness["R1b: No TCJA control"] = r1b
+print(r1b.summary())
+
 # -- R2: SIC 1-digit x year FE (broad industry trends) --
 # 8 SIC divisions x 10 years = 80 FE: controls for broad sector trends
 # without absorbing within-sector variation that identifies the effect
 print("\n--- R2: SIC 1-digit x year FE ---")
 r2 = pf.feols(
-    f"etr_winsorized ~ tariff_x_post + {CONTROLS} | cik + sic1^year",
+    f"etr_winsorized ~ tariff_x_post + {CONTROLS_TCJA} | cik + sic1^year",
     data=df, vcov={"CRV1": "naics3_str"},
 )
 robustness["R2: SIC1 x year FE"] = r2
@@ -282,7 +305,7 @@ print(r2.summary())
 # Included for transparency but expected to lose significance
 print("\n--- R3: NAICS-2 x year FE (aggressive, for comparison) ---")
 r3 = pf.feols(
-    f"etr_winsorized ~ tariff_x_post + {CONTROLS} | cik + naics2^year",
+    f"etr_winsorized ~ tariff_x_post + {CONTROLS_TCJA} | cik + naics2^year",
     data=df, vcov={"CRV1": "naics3_str"},
 )
 robustness["R3: NAICS2 x year FE"] = r3
@@ -293,7 +316,7 @@ print(r3.summary())
 # own linear slope over time rather than absorbing every industry-year cell
 print("\n--- R4: NAICS-2 linear time trends ---")
 r4 = pf.feols(
-    f"etr_winsorized ~ tariff_x_post + {CONTROLS} + i(naics2, year) | cik + year",
+    f"etr_winsorized ~ tariff_x_post + {CONTROLS_TCJA} + i(naics2, year) | cik + year",
     data=df, vcov={"CRV1": "naics3_str"},
 )
 robustness["R4: NAICS2 linear trends"] = r4
@@ -305,7 +328,7 @@ print(r4.summary())
 print("\n--- R5: Placebo test (fake treatment at 2017, 2015-2018 data) ---")
 df_pre = df[df["year"] <= 2018].copy()
 r5 = pf.feols(
-    f"etr_winsorized ~ tariff_x_post_placebo + {CONTROLS} | cik + year",
+    f"etr_winsorized ~ tariff_x_post_placebo + {CONTROLS_TCJA} | cik + year",
     data=df_pre, vcov={"CRV1": "naics3_str"},
 )
 robustness["R5: Placebo (2017)"] = r5
@@ -330,7 +353,7 @@ print(r6.summary())
 # -- R7: ETR winsorized at 5th/95th --
 print("\n--- R7: Tighter winsorization (5th/95th) ---")
 r7 = pf.feols(
-    f"etr_w5_95 ~ tariff_x_post + {CONTROLS} | cik + year",
+    f"etr_w5_95 ~ tariff_x_post + {CONTROLS_TCJA} | cik + year",
     data=df, vcov={"CRV1": "naics3_str"},
 )
 robustness["R7: ETR p5/p95"] = r7
@@ -340,7 +363,7 @@ print(r7.summary())
 # Drops firm-years with economically implausible ETR values
 print("\n--- R8: ETR trimmed to [0, 100] ---")
 r8 = pf.feols(
-    f"etr_trim_100 ~ tariff_x_post + {CONTROLS} | cik + year",
+    f"etr_trim_100 ~ tariff_x_post + {CONTROLS_TCJA} | cik + year",
     data=df, vcov={"CRV1": "naics3_str"},
 )
 robustness["R8: ETR [0,100]"] = r8
@@ -350,7 +373,7 @@ print(r8.summary())
 # Most restrictive: only firms with normal-range effective tax rates
 print("\n--- R9: ETR trimmed to [0, 60] ---")
 r9 = pf.feols(
-    f"etr_trim_60 ~ tariff_x_post + {CONTROLS} | cik + year",
+    f"etr_trim_60 ~ tariff_x_post + {CONTROLS_TCJA} | cik + year",
     data=df, vcov={"CRV1": "naics3_str"},
 )
 robustness["R9: ETR [0,60]"] = r9
@@ -359,7 +382,7 @@ print(r9.summary())
 # -- R10: FPS as alternative outcome --
 print("\n--- R10: FPS as outcome (alternative measure) ---")
 r10 = pf.feols(
-    f"foreign_profit_share_winsorized ~ tariff_x_post + {CONTROLS} | cik + year",
+    f"foreign_profit_share_winsorized ~ tariff_x_post + {CONTROLS_TCJA} | cik + year",
     data=df, vcov={"CRV1": "naics3_str"},
 )
 robustness["R10: FPS outcome"] = r10
@@ -380,7 +403,7 @@ alt_measures = {}
 # -- Mean tariff (standardized, for baseline comparison) --
 print("\n--- A1: Mean tariff increase (z-scored) ---")
 a1 = pf.feols(
-    f"etr_winsorized ~ mean_tariff_z_x_post + {CONTROLS} | cik + year",
+    f"etr_winsorized ~ mean_tariff_z_x_post + {CONTROLS_TCJA} | cik + year",
     data=df, vcov={"CRV1": "naics3_str"},
 )
 alt_measures["A1: Mean tariff (z)"] = ("mean_tariff_z_x_post", a1)
@@ -391,7 +414,7 @@ print(a1.summary())
 # More products hit = more of the industry's supply chain is affected
 print("\n--- A2: Number of products targeted (z-scored) ---")
 a2 = pf.feols(
-    f"etr_winsorized ~ products_x_post + {CONTROLS} | cik + year",
+    f"etr_winsorized ~ products_x_post + {CONTROLS_TCJA} | cik + year",
     data=df, vcov={"CRV1": "naics3_str"},
 )
 alt_measures["A2: N products (z)"] = ("products_x_post", a2)
@@ -402,7 +425,7 @@ print(a2.summary())
 # Primary Metals has 14,093 varieties vs 1,147 products (many source countries)
 print("\n--- A3: Number of varieties targeted (z-scored) ---")
 a3 = pf.feols(
-    f"etr_winsorized ~ varieties_x_post + {CONTROLS} | cik + year",
+    f"etr_winsorized ~ varieties_x_post + {CONTROLS_TCJA} | cik + year",
     data=df, vcov={"CRV1": "naics3_str"},
 )
 alt_measures["A3: N varieties (z)"] = ("varieties_x_post", a3)
@@ -413,7 +436,7 @@ print(a3.summary())
 # Higher SD = more heterogeneous tariff exposure within the industry
 print("\n--- A4: SD of tariff increase (z-scored) ---")
 a4 = pf.feols(
-    f"etr_winsorized ~ sd_tariff_x_post + {CONTROLS} | cik + year",
+    f"etr_winsorized ~ sd_tariff_x_post + {CONTROLS_TCJA} | cik + year",
     data=df, vcov={"CRV1": "naics3_str"},
 )
 alt_measures["A4: SD tariff (z)"] = ("sd_tariff_x_post", a4)
@@ -451,7 +474,7 @@ c = model_main.coef()["tariff_x_post"]
 s = model_main.se()["tariff_x_post"]
 p = model_main.pvalue()["tariff_x_post"]
 n = model_main._N
-print(f"{'Main (ETR + controls)':<30} {c:>8.1f} {s:>8.1f} {p:>8.3f} {n:>7}")
+print(f"{'Main (ETR + TCJA ctrl)':<30} {c:>8.1f} {s:>8.1f} {p:>8.3f} {n:>7}")
 
 # Robustness checks
 for label, m in robustness.items():
