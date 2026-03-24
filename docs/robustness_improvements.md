@@ -22,9 +22,9 @@ But 24 clusters is a small number. The standard cluster-robust variance estimato
 
 ### How the results changed
 
-The main model was barely affected: the coefficient stayed at -68.4, and the p-value actually got slightly better (from 0.002 to <0.001) because the NAICS-3 clustered SEs happened to be smaller than the firm-clustered SEs for this specification. The wild bootstrap p-value is 0.009, confirming the result survives the few-cluster correction.
+The main model was barely affected: the coefficient stayed at -68.2, and the p-value actually got slightly better (from 0.002 to <0.001) because the NAICS-3 clustered SEs happened to be smaller than the firm-clustered SEs for this specification. The wild bootstrap p-value is 0.009, confirming the result survives the few-cluster correction.
 
-The big change was in the NAICS-2 x year FE robustness check. With the old firm-level clustering, that specification had a p-value of 0.267 --- not significant, and the single biggest vulnerability in the analysis. With correct NAICS-3 clustering, the exact same specification now has a p-value of 0.009. The coefficient didn't change at all (-40.2 either way). The only thing that changed was how the uncertainty was computed. This was the most consequential fix in the entire update.
+The big change was in the NAICS-2 x year FE robustness check. With the old firm-level clustering, that specification had a p-value of 0.267 --- not significant, and the single biggest vulnerability in the analysis. With correct NAICS-3 clustering, the exact same specification now has a p-value of 0.009. The coefficient didn't change at all (-39.8 either way). The only thing that changed was how the uncertainty was computed. This was the most consequential fix in the entire update.
 
 ---
 
@@ -50,15 +50,15 @@ Three new industry-trend specifications were added:
 
 ### How the results changed
 
-**SIC 1-digit x year FE: coefficient = -61.7, p = 0.001.** This is the strongest new result. It says: even after controlling for broad sector-level trends over time, the tariff effect is large and highly significant. The coefficient barely budged from the main model (-68.4), and the p-value is well below conventional thresholds.
+**SIC 1-digit x year FE: coefficient = -61.5, p = 0.001.** This is the strongest new result. It says: even after controlling for broad sector-level trends over time, the tariff effect is large and highly significant. The coefficient barely budged from the main model (-68.2), and the p-value is well below conventional thresholds.
 
-**NAICS-2 x year FE: coefficient = -40.2, p = 0.009.** As noted above, this was already significant once the clustering was fixed. The coefficient is smaller because these aggressive fixed effects absorb a lot of variation, but the effect is still economically meaningful and statistically significant.
+**NAICS-2 x year FE: coefficient = -39.8, p = 0.009.** As noted above, this was already significant once the clustering was fixed. The coefficient is smaller because these aggressive fixed effects absorb a lot of variation, but the effect is still economically meaningful and statistically significant.
 
-**NAICS-2 linear trends: coefficient = -52.1, p = 0.122.** Borderline. The point estimate is large and in the right direction, but the standard errors widen because the industry-specific slopes absorb some of the variation the model needs. This is less aggressive than full NAICS-2 x year FE but still soaks up a fair amount of identifying variation.
+**NAICS-2 linear trends: coefficient = -51.8, p = 0.122.** Borderline. The point estimate is large and in the right direction, but the standard errors widen because the industry-specific slopes absorb some of the variation the model needs. This is less aggressive than full NAICS-2 x year FE but still soaks up a fair amount of identifying variation.
 
-**Placebo test: coefficient = +86.1, p = 0.108.** This is exactly what we want. The fake treatment gives a wrong-sign (positive, not negative) coefficient that is not statistically significant. There is no pre-existing tariff effect before 2018. This is arguably more convincing than any fixed effects specification, because it directly tests the causal timing rather than trying to control for confounds.
+**Placebo test: coefficient = +85.2, p = 0.107.** This is exactly what we want. The fake treatment gives a wrong-sign (positive, not negative) coefficient that is not statistically significant. There is no pre-existing tariff effect before 2018. This is arguably more convincing than any fixed effects specification, because it directly tests the causal timing rather than trying to control for confounds.
 
-**Balanced panel: coefficient = -66.4, p < 0.001.** Nearly identical to the main model. Attrition doesn't matter.
+**Balanced panel: coefficient = -66.2, p < 0.001.** Nearly identical to the main model. Attrition doesn't matter.
 
 Before these fixes, the analysis had one significant result and one fatal weakness (the NAICS-2 x year FE failure). After the fixes, the industry-trend concern is addressed from multiple angles, and the placebo test adds direct causal evidence.
 
@@ -88,16 +88,16 @@ Three additional ETR treatments were tested:
 
 | ETR treatment | Coef | p-value |
 |---|---|---|
-| Main (p1/p99, range 0-237) | -68.4 | <0.001 |
-| p5/p95 (range 0.5-60.2) | -24.1 | 0.021 |
-| Trimmed [0, 100] | -19.2 | 0.127 |
-| Trimmed [0, 60] | -8.0 | 0.385 |
+| Main (p1/p99, range 0-237) | -68.2 | <0.001 |
+| p5/p95 (range 0.5-60.2) | -24.4 | 0.019 |
+| Trimmed [0, 100] | -19.4 | 0.120 |
+| Trimmed [0, 60] | -8.4 | 0.357 |
 
-The direction is always negative (tariff-exposed firms see lower ETR), which is consistent across every specification. But the magnitude drops substantially as extreme values are removed. The result stays significant at p5/p95 winsorization (p = 0.021), which is the key finding --- it means the effect isn't purely an artifact of wild outliers. But it does lose significance when trimmed to [0, 100] or [0, 60].
+The direction is always negative (tariff-exposed firms see lower ETR), which is consistent across every specification. But the magnitude drops substantially as extreme values are removed. The result stays significant at p5/p95 winsorization (p = 0.019), which is the key finding --- it means the effect isn't purely an artifact of wild outliers. But it does lose significance when trimmed to [0, 100] or [0, 60].
 
-What this tells us is that the headline number of -68.4 is inflated by firms with extreme ETR values. The more conservative and defensible estimate is the p5/p95 result of -24.1, which implies roughly a 5 percentage point ETR drop for firms at the 75th percentile of tariff exposure (compared to the 14pp implied by the main spec). That's still an economically meaningful effect --- a firm paying 25% ETR would drop to about 20% --- but it's a more honest characterization of the magnitude.
+What this tells us is that the headline number of -68.2 is inflated by firms with extreme ETR values. The more conservative and defensible estimate is the p5/p95 result of -24.4, which implies roughly a 5 percentage point ETR drop for firms at the 75th percentile of tariff exposure (compared to the 14pp implied by the main spec). That's still an economically meaningful effect --- a firm paying 25% ETR would drop to about 20% --- but it's a more honest characterization of the magnitude.
 
-The fact that the [0, 60] specification is not significant (p = 0.385) is worth noting. It could mean the effect genuinely operates through firms with unusual tax situations (which is plausible --- firms with volatile ETR may be the ones most actively managing their tax positions). Or it could mean the effect is weaker than the main model suggests. Either way, reporting these results transparently strengthens the analysis by showing the reader exactly where the result comes from in the data.
+The fact that the [0, 60] specification is not significant (p = 0.357) is worth noting. It could mean the effect genuinely operates through firms with unusual tax situations (which is plausible --- firms with volatile ETR may be the ones most actively managing their tax positions). Or it could mean the effect is weaker than the main model suggests. Either way, reporting these results transparently strengthens the analysis by showing the reader exactly where the result comes from in the data.
 
 ---
 
@@ -120,7 +120,7 @@ The fact that the [0, 60] specification is not significant (p = 0.385) is worth 
 | NAICS-2 x year FE p-value | 0.267 (not significant) | 0.009 (significant) |
 | Wild cluster bootstrap | Not done | p = 0.009 |
 | Industry trend checks | 1 (NAICS-2 x year only) | 3 (SIC-1 x year, NAICS-2 x year, NAICS-2 linear trends) |
-| Placebo test | Not done | Passes (wrong sign, p = 0.108) |
+| Placebo test | Not done | Passes (wrong sign, p = 0.107) |
 | Balanced panel check | Not done | Passes (p < 0.001) |
 | ETR sensitivity checks | None | 3 (p5/p95, [0,100], [0,60]) |
 | Alternative tariff measures | None | 4 (mean rate, n products, n varieties, SD rate) |
@@ -143,8 +143,8 @@ All four tariff measures were standardized (z-scored) so their coefficients are 
 | Measure | Coef | SE | p-value |
 |---|---|---|---|
 | Mean tariff increase (z) | -2.9 | 0.6 | <0.001 |
-| N products targeted (z) | +1.0 | 1.2 | 0.390 |
-| N varieties targeted (z) | +0.4 | 0.4 | 0.365 |
+| N products targeted (z) | +1.0 | 1.2 | 0.392 |
+| N varieties targeted (z) | +0.4 | 0.4 | 0.362 |
 | SD of tariff increase (z) | -2.0 | 0.8 | 0.024 |
 
 The tariff rate measures (mean and SD) both produce significant, negative effects on ETR. The product count measures do not --- in fact, they have the wrong sign.
@@ -155,6 +155,6 @@ The SD of tariff increase is highly correlated with the mean rate (r = 0.87), so
 
 ### Attenuation bias
 
-Tariff exposure is assigned at the NAICS 3-digit industry level, meaning all firms in the same industry get the same score. This is a noisy proxy for each firm's true exposure, since firms within the same NAICS-3 make different products. This measurement error causes classical attenuation bias: the estimated coefficient is biased toward zero, meaning the true effect is likely larger than what we find. The -68.4 coefficient (or the more conservative -24.1) is an underestimate if anything.
+Tariff exposure is assigned at the NAICS 3-digit industry level, meaning all firms in the same industry get the same score. This is a noisy proxy for each firm's true exposure, since firms within the same NAICS-3 make different products. This measurement error causes classical attenuation bias: the estimated coefficient is biased toward zero, meaning the true effect is likely larger than what we find. The -68.2 coefficient (or the more conservative -24.4) is an underestimate if anything.
 
 Building firm-level tariff exposure would require mapping each firm's product mix to HS-8 tariff codes using product-level import data from the Census Bureau, combined with the HS-to-NAICS concordance (the Census `imp-code.txt` files). The USTR publishes the Section 301 tariff lists with specific HS-8 codes. This is feasible as a future extension but beyond the scope of the current analysis.

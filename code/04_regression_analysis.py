@@ -62,6 +62,7 @@ df["post2018"] = (df["year"] >= 2019).astype(int)
 # -- Controls --
 df["log_revenue"] = np.log(df["total_revenue"] + 1)
 df["rd_intensity"] = df["rd_expense"] / df["total_revenue"]
+df["rd_intensity"] = df["rd_intensity"].replace([np.inf, -np.inf], np.nan)
 df["leverage"] = df["total_debt"] / df["total_assets"]
 
 # -- Main ETR winsorization (1st/99th percentiles) --

@@ -25,7 +25,7 @@ Examining whether the 2018 Section 301 tariffs on Chinese imports caused U.S. mu
 
 ## Dataset
 
-- 1,675 firms, 2015-2024 (14,400 firm-year observations, 30 variables)
+- 1,674 firms, 2015-2024 (14,397 firm-year observations, 30 variables)
 - SEC EDGAR: foreign, domestic, and total pre-tax income (used for Foreign Profit Share robustness check)
 - Bloomberg: effective tax rate, revenue, R&D, assets, debt, capex
 - Tariff exposure: NAICS-3 level mean tariff increase from Section 301 lists
