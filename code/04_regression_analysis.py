@@ -10,7 +10,7 @@ Wild cluster bootstrap corrects for few clusters (24 industries).
 
 Robustness checks:
   - No controls
-  - TCJA control (pre-treatment foreign profit share x post-2018)
+  - TCJA control (pre-treatment foreign profit share x post-TCJA, starting 2018)
   - SIC 1-digit x year FE (broad industry trends)
   - NAICS-2 x year FE (aggressive industry trends, for comparison)
   - NAICS-2 linear time trends (less aggressive alternative)
@@ -20,6 +20,8 @@ Robustness checks:
   - ETR trimmed to [0, 100]
   - ETR trimmed to [0, 60]
   - FPS as alternative outcome
+  - COVID interaction (tariff effect net of COVID disruption)
+  - Excluding COVID years (2020-2021)
 
 Input:
   - data/processed/merged_panel.csv
@@ -88,13 +90,16 @@ print(f"ETR trimmed [0,100]: {df['etr_trim_100'].notna().sum():,} obs")
 print(f"ETR trimmed [0,60]:  {df['etr_trim_60'].notna().sum():,} obs")
 
 # -- TCJA exposure control --
-# The Tax Cuts and Jobs Act (2017) changed international tax rules (GILTI, BEAT, FDII)
-# at the same time as tariffs. Firms with more pre-existing foreign operations were
-# differentially affected. We control for this by interacting each firm's pre-treatment
-# average foreign profit share with the post-2018 indicator.
+# The Tax Cuts and Jobs Act was signed Dec 2017 and took effect for fiscal years
+# beginning after Dec 31, 2017 — so FY2018 is the first affected year.
+# GILTI, BEAT, and FDII differentially hit firms with more foreign operations.
+# We control for this by interacting each firm's pre-treatment average foreign
+# profit share with a post-TCJA indicator (year >= 2018), which correctly starts
+# one year before the tariff treatment (year >= 2019).
 pre_fps = df[df["year"] <= 2017].groupby("cik")["foreign_profit_share"].mean()
 df["pre_fps"] = df["cik"].map(pre_fps)
-df["tcja_exposure"] = df["pre_fps"].fillna(0) * df["post2018"]
+df["post_tcja"] = (df["year"] >= 2018).astype(int)
+df["tcja_exposure"] = df["pre_fps"].fillna(0) * df["post_tcja"]
 n_tcja = df["pre_fps"].notna().sum()
 print(f"TCJA exposure: {n_tcja:,} obs with pre-treatment FPS, "
       f"mean pre-FPS = {df['pre_fps'].mean():.3f}")
@@ -121,6 +126,13 @@ df.loc[df["sic_code"].isna(), "sic1"] = "0"
 # -- NAICS-3 as numeric cluster ID (wildboottest needs numeric, not string) --
 df["naics3_str"] = df["naics3"].astype(str)
 df["naics3_cluster"] = pd.Categorical(df["naics3_str"]).codes.astype(np.int64)
+
+# -- COVID indicator (2020-2021) for robustness --
+# COVID differentially affected tariff-exposed manufacturing firms through
+# supply chain disruptions, loss carryforwards, and pandemic relief programs.
+# The interaction allows the tariff effect to differ during COVID years.
+df["covid"] = df["year"].isin([2020, 2021]).astype(int)
+df["tariff_x_covid"] = df["mean_tariff_increase"] * df["covid"]
 
 # -- Goods-producing flag (NAICS 111-339) --
 naics3_num = pd.to_numeric(df["naics3"], errors="coerce")
@@ -389,6 +401,29 @@ r10 = pf.feols(
 robustness["R10: FPS outcome"] = r10
 print(r10.summary())
 
+# -- R11: COVID interaction (does COVID attenuate the tariff effect?) --
+# If COVID differentially hit tariff-exposed firms, the baseline estimate
+# blends the tariff effect with COVID disruption. Adding tariff_x_covid
+# isolates the tariff effect net of COVID.
+print("\n--- R11: COVID interaction (tariff_x_post + tariff_x_covid) ---")
+r11 = pf.feols(
+    f"etr_winsorized ~ tariff_x_post + tariff_x_covid + {CONTROLS_TCJA} | cik + year",
+    data=df, vcov={"CRV1": "naics3_str"},
+)
+robustness["R11: COVID interaction"] = r11
+print(r11.summary())
+
+# -- R12: Excluding COVID years entirely --
+# Most conservative: drops 2020-2021 so COVID cannot affect the estimate at all
+print("\n--- R12: Excluding COVID years (2020-2021) ---")
+df_nocovid = df[~df["year"].isin([2020, 2021])].copy()
+r12 = pf.feols(
+    MAIN_FORMULA,
+    data=df_nocovid, vcov={"CRV1": "naics3_str"},
+)
+robustness["R12: Excl. COVID years"] = r12
+print(r12.summary())
+
 
 # -----------------------------------------------------------------------
 # Step 6b: Alternative tariff exposure measures (all standardized)
@@ -487,6 +522,12 @@ for label, m in robustness.items():
     p = m.pvalue()[param_name]
     n = m._N
     print(f"{label:<30} {c:>8.1f} {s:>8.1f} {p:>8.3f} {n:>7}")
+    # Print COVID interaction coefficient on its own line
+    if label == "R11: COVID interaction":
+        cc = m.coef()["tariff_x_covid"]
+        cs = m.se()["tariff_x_covid"]
+        cp = m.pvalue()["tariff_x_covid"]
+        print(f"{'  └ tariff_x_covid':<30} {cc:>8.1f} {cs:>8.1f} {cp:>8.3f} {n:>7}")
 
 print("-" * len(header))
 print("\nAnalysis complete.")
