@@ -22,6 +22,7 @@ Robustness checks:
   - FPS as alternative outcome
   - COVID interaction (tariff effect net of COVID disruption)
   - Excluding COVID years (2020-2021)
+  - Leave-one-industry-out (drop each NAICS-3 and re-run main spec)
 
 Input:
   - data/processed/merged_panel.csv
@@ -492,6 +493,85 @@ for label, (param, m) in alt_measures.items():
     n = m._N
     print(f"{label:<25} {c:>8.1f} {s:>8.1f} {p:>8.3f} {n:>7}")
 print("-" * len(alt_header))
+
+
+# -----------------------------------------------------------------------
+# Step 6c: Leave-one-industry-out robustness
+# -----------------------------------------------------------------------
+# Drop each NAICS-3 industry one at a time and re-run the main regression.
+# If one industry (e.g., 334 Computer and Electronic Products) is driving
+# the entire result, the coefficient should collapse when that industry
+# is excluded. Stability across exclusions means multiple industries
+# contribute to the finding.
+print(f"\n{'=' * 65}")
+print("STEP 6c: Leave-One-Industry-Out")
+print("Drop each NAICS-3 industry and re-run main specification")
+print("=" * 65)
+
+# Get NAICS-3 industries present in the regression sample
+reg_industries = reg_sample.groupby("naics3_str").agg(
+    sector_name=("naics3_str", "first"),
+    n_firms=("cik", "nunique"),
+    n_obs=("cik", "size"),
+).reset_index()
+
+# Merge sector names from tariff file for display
+tariff_labels = pd.read_csv(BASE_DIR / "tariff_exposure_naics3.csv",
+                            usecols=["naics3", "sector_name"])
+tariff_labels["naics3"] = tariff_labels["naics3"].astype(str)
+reg_industries = reg_industries.merge(
+    tariff_labels, left_on="naics3_str", right_on="naics3", how="left",
+    suffixes=("_drop", ""),
+)
+reg_industries = reg_industries.drop(columns=["sector_name_drop", "naics3"], errors="ignore")
+
+loio_results = []
+industries_in_sample = sorted(reg_sample["naics3_str"].unique())
+
+for ind in industries_in_sample:
+    df_excl = df[df["naics3_str"] != ind].copy()
+    n_clusters_excl = df_excl.dropna(
+        subset=["etr_winsorized", "tariff_x_post", "log_revenue",
+                "rd_intensity", "leverage"]
+    )["naics3_str"].nunique()
+    try:
+        m = pf.feols(MAIN_FORMULA, data=df_excl, vcov={"CRV1": "naics3_str"})
+        loio_results.append({
+            "naics3": ind,
+            "coef": m.coef()["tariff_x_post"],
+            "se": m.se()["tariff_x_post"],
+            "pvalue": m.pvalue()["tariff_x_post"],
+            "n_obs": m._N,
+            "n_clusters": n_clusters_excl,
+        })
+    except Exception as e:
+        print(f"  Warning: failed for NAICS {ind}: {e}")
+        loio_results.append({
+            "naics3": ind, "coef": np.nan, "se": np.nan,
+            "pvalue": np.nan, "n_obs": np.nan, "n_clusters": np.nan,
+        })
+
+loio_df = pd.DataFrame(loio_results)
+loio_df = loio_df.merge(
+    tariff_labels, left_on="naics3", right_on="naics3", how="left",
+)
+
+print(f"\nMain estimate (full sample): {model_main.coef()['tariff_x_post']:.1f}")
+print(f"\n{'Excluded Industry':<45} {'Coef':>8} {'SE':>8} {'p-val':>8} {'N':>6} {'Cl':>4}")
+print("-" * 83)
+for _, row in loio_df.iterrows():
+    label = f"{int(row['naics3']):>3} {row.get('sector_name', '')}"
+    if len(label) > 44:
+        label = label[:44]
+    print(f"{label:<45} {row['coef']:>8.1f} {row['se']:>8.1f} "
+          f"{row['pvalue']:>8.3f} {int(row['n_obs']):>6} {int(row['n_clusters']):>4}")
+print("-" * 83)
+
+loio_valid = loio_df.dropna(subset=["coef"])
+print(f"\nCoefficient range: [{loio_valid['coef'].min():.1f}, {loio_valid['coef'].max():.1f}]")
+print(f"All significant (p < 0.05): {(loio_valid['pvalue'] < 0.05).all()}")
+print(f"Min p-value: {loio_valid['pvalue'].min():.4f}")
+print(f"Max p-value: {loio_valid['pvalue'].max():.4f}")
 
 
 # -----------------------------------------------------------------------
