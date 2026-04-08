@@ -5,3 +5,4 @@ requests>=2.31
 seaborn>=0.13
 matplotlib>=3.7
 pyfixest>=0.25
+statsmodels>=0.14

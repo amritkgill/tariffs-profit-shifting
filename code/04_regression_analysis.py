@@ -23,6 +23,9 @@ Robustness checks:
   - COVID interaction (tariff effect net of COVID disruption)
   - Excluding COVID years (2020-2021)
   - Leave-one-industry-out (drop each NAICS-3 and re-run main spec)
+  - Quantile regression at tau=0.25/0.50/0.75 (modified Canay 2011, median FE, cluster bootstrap)
+  - Quantile regression on [0,60] trimmed ETR (strongest outlier robustness)
+  - Leave-3-industries-out (all C(24,3) = 2,024 combinations)
 
 Input:
   - data/processed/merged_panel.csv
@@ -37,6 +40,14 @@ import numpy as np
 import pyfixest as pf
 import matplotlib.pyplot as plt
 from pathlib import Path
+from itertools import combinations
+
+try:
+    from statsmodels.regression.quantile_regression import QuantReg
+    import statsmodels.api as sm
+    HAS_STATSMODELS = True
+except ImportError:
+    HAS_STATSMODELS = False
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 PROCESSED_DIR = BASE_DIR / "data" / "processed"
@@ -575,6 +586,273 @@ print(f"Max p-value: {loio_valid['pvalue'].max():.4f}")
 
 
 # -----------------------------------------------------------------------
+# Step 6d: Quantile (Median) Regression — Canay (2011) Two-Step
+# -----------------------------------------------------------------------
+# The main OLS result is sensitive to ETR outliers (vanishes at [0,60] trim).
+# Quantile regression estimates the effect at the MEDIAN of the conditional
+# ETR distribution — outliers get zero extra influence, no trimming needed.
+#
+# Canay (2011) two-step estimator for fixed-effects quantile regression:
+#   1. Estimate firm FE from OLS (mean regression with firm + year FE)
+#   2. Subtract estimated firm FE from the dependent variable
+#   3. Run quantile regression on the FE-adjusted outcome with year dummies
+#
+# Consistent under the assumption that firm FE are pure location shifts
+# (affect the level but not the shape of each firm's ETR distribution).
+#
+# Inference: paired cluster bootstrap at NAICS-3 level (500 reps).
+# -----------------------------------------------------------------------
+
+if not HAS_STATSMODELS:
+    print(f"\n{'=' * 65}")
+    print("STEP 6d: Quantile Regression — SKIPPED (statsmodels not installed)")
+    print("Install with: pip install statsmodels")
+    print("=" * 65)
+    qr_results = {}
+else:
+    print(f"\n{'=' * 65}")
+    print("STEP 6d: Quantile (Median) Regression")
+    print("Modified Canay (2011): median-based firm FE (outlier-robust)")
+    print("Cluster bootstrap re-estimates FE each iteration (999 reps)")
+    print("=" * 65)
+
+    # Prepare regression sample (same filters as main model)
+    qr_cols = ["etr_winsorized", "tariff_x_post", "log_revenue", "rd_intensity",
+               "leverage", "tcja_exposure", "cik", "year", "naics3_str"]
+    qr_df = df[qr_cols].dropna().copy()
+    qr_df = qr_df.reset_index(drop=True)
+
+    # Drop singletons (firms with only 1 obs can't have a meaningful FE)
+    firm_counts = qr_df["cik"].value_counts()
+    singleton_firms = firm_counts[firm_counts < 2].index
+    qr_df = qr_df[~qr_df["cik"].isin(singleton_firms)].reset_index(drop=True)
+    print(f"  QR sample: {len(qr_df):,} obs, {qr_df['cik'].nunique():,} firms "
+          f"(dropped {len(singleton_firms)} singletons)")
+
+    # Helper: estimate firm FE as within-firm median ETR (outlier-robust),
+    # subtract from ETR, build design matrix, return (X, y) ready for QR.
+    regressors = ["tariff_x_post", "log_revenue", "rd_intensity", "leverage", "tcja_exposure"]
+
+    def prepare_qr_data(data):
+        """Compute median-based firm FE and return (X, y) for quantile regression."""
+        firm_medians = data.groupby("cik")["etr_winsorized"].median()
+        data = data.copy()
+        data["firm_fe"] = data["cik"].map(firm_medians)
+        data["etr_adj"] = data["etr_winsorized"] - data["firm_fe"]
+        yr_dum = pd.get_dummies(data["year"], prefix="yr", drop_first=True, dtype=float)
+        X = pd.concat([data[regressors].reset_index(drop=True),
+                        yr_dum.reset_index(drop=True)], axis=1)
+        X = sm.add_constant(X)
+        y = data["etr_adj"].reset_index(drop=True)
+        return X, y
+
+    # Full-sample point estimates
+    X_qr, y_qr = prepare_qr_data(qr_df)
+    quantiles = [0.25, 0.50, 0.75]
+    qr_results = {}
+
+    for tau in quantiles:
+        qr_fit = QuantReg(y_qr, X_qr).fit(q=tau, max_iter=1000)
+        qr_results[tau] = {
+            "coef": qr_fit.params["tariff_x_post"],
+            "se_pointwise": qr_fit.bse["tariff_x_post"],
+            "pvalue_pointwise": qr_fit.pvalues["tariff_x_post"],
+        }
+        print(f"\n  tau = {tau:.2f} (pointwise): coef = {qr_fit.params['tariff_x_post']:.1f}, "
+              f"SE = {qr_fit.bse['tariff_x_post']:.1f}, "
+              f"p = {qr_fit.pvalues['tariff_x_post']:.3f}")
+
+    # Cluster bootstrap: re-estimates median firm FE + QR each iteration
+    N_BOOT = 999
+    print(f"\n  Running cluster bootstrap ({N_BOOT} reps, re-estimating FE each rep)...")
+    np.random.seed(42)
+    clusters = qr_df["naics3_str"].values
+    unique_clusters = np.unique(clusters)
+    cluster_indices = {cl: np.where(clusters == cl)[0] for cl in unique_clusters}
+    boot_coefs = {tau: [] for tau in quantiles}
+
+    for b in range(N_BOOT):
+        # Resample entire NAICS-3 clusters with replacement
+        boot_cls = np.random.choice(unique_clusters, size=len(unique_clusters), replace=True)
+        boot_idx = np.concatenate([cluster_indices[cl] for cl in boot_cls])
+        boot_data = qr_df.iloc[boot_idx].reset_index(drop=True)
+
+        # Re-estimate median firm FE on bootstrap sample (Step 1 + 2)
+        try:
+            X_b, y_b = prepare_qr_data(boot_data)
+        except Exception:
+            continue
+
+        for tau in quantiles:
+            try:
+                qr_b = QuantReg(y_b, X_b).fit(q=tau, max_iter=1000)
+                boot_coefs[tau].append(qr_b.params["tariff_x_post"])
+            except Exception:
+                pass
+
+        if (b + 1) % 200 == 0:
+            print(f"    ... {b + 1}/{N_BOOT} bootstrap reps done")
+
+    # Report cluster-bootstrapped results
+    print(f"\n  {'tau':<6} {'Coef':>8} {'Boot SE':>10} {'95% CI':>28} {'Sig':>6}")
+    print(f"  {'-' * 62}")
+    for tau in quantiles:
+        coefs_arr = np.array(boot_coefs[tau])
+        point = qr_results[tau]["coef"]
+        boot_se = coefs_arr.std()
+        ci_lo = np.percentile(coefs_arr, 2.5)
+        ci_hi = np.percentile(coefs_arr, 97.5)
+        sig = "*" if (ci_lo > 0 or ci_hi < 0) else ""
+        print(f"  {tau:<6} {point:>8.1f} {boot_se:>10.1f} "
+              f"  [{ci_lo:>8.1f}, {ci_hi:>8.1f}] {sig:>6}")
+        qr_results[tau]["boot_se"] = boot_se
+        qr_results[tau]["ci_lo"] = ci_lo
+        qr_results[tau]["ci_hi"] = ci_hi
+        qr_results[tau]["sig"] = ci_lo > 0 or ci_hi < 0
+
+    # Median regression on [0,60] trimmed ETR (strongest outlier robustness test)
+    # If this is significant, the effect exists even among normal-range ETR firms
+    # estimated with an outlier-robust method.
+    print(f"\n  --- Median regression on ETR trimmed to [0, 60] ---")
+    qr_trim_cols = ["etr_trim_60", "tariff_x_post", "log_revenue", "rd_intensity",
+                    "leverage", "tcja_exposure", "cik", "year", "naics3_str"]
+    qr_trim_df = df[qr_trim_cols].dropna().copy().reset_index(drop=True)
+    trim_counts = qr_trim_df["cik"].value_counts()
+    trim_singletons = trim_counts[trim_counts < 2].index
+    qr_trim_df = qr_trim_df[~qr_trim_df["cik"].isin(trim_singletons)].reset_index(drop=True)
+    print(f"  Trimmed sample: {len(qr_trim_df):,} obs, {qr_trim_df['cik'].nunique():,} firms")
+
+    # Use same median FE approach but on trimmed ETR
+    def prepare_qr_trimmed(data):
+        firm_medians = data.groupby("cik")["etr_trim_60"].median()
+        data = data.copy()
+        data["firm_fe"] = data["cik"].map(firm_medians)
+        data["etr_adj"] = data["etr_trim_60"] - data["firm_fe"]
+        yr_dum = pd.get_dummies(data["year"], prefix="yr", drop_first=True, dtype=float)
+        X = pd.concat([data[regressors].reset_index(drop=True),
+                        yr_dum.reset_index(drop=True)], axis=1)
+        X = sm.add_constant(X)
+        y = data["etr_adj"].reset_index(drop=True)
+        return X, y
+
+    X_trim, y_trim = prepare_qr_trimmed(qr_trim_df)
+    qr_trim_fit = QuantReg(y_trim, X_trim).fit(q=0.5, max_iter=1000)
+    qr_trim_coef = qr_trim_fit.params["tariff_x_post"]
+    qr_trim_se = qr_trim_fit.bse["tariff_x_post"]
+    print(f"  Median QR on [0,60] (pointwise): coef = {qr_trim_coef:.1f}, "
+          f"SE = {qr_trim_se:.1f}, p = {qr_trim_fit.pvalues['tariff_x_post']:.3f}")
+
+    # Bootstrap for trimmed sample
+    print(f"  Running cluster bootstrap ({N_BOOT} reps) for [0,60] median...")
+    trim_clusters = qr_trim_df["naics3_str"].values
+    trim_unique_cl = np.unique(trim_clusters)
+    trim_cl_idx = {cl: np.where(trim_clusters == cl)[0] for cl in trim_unique_cl}
+    trim_boot_coefs = []
+
+    for b in range(N_BOOT):
+        boot_cls = np.random.choice(trim_unique_cl, size=len(trim_unique_cl), replace=True)
+        boot_idx = np.concatenate([trim_cl_idx[cl] for cl in boot_cls])
+        boot_data = qr_trim_df.iloc[boot_idx].reset_index(drop=True)
+        try:
+            X_b, y_b = prepare_qr_trimmed(boot_data)
+            fit_b = QuantReg(y_b, X_b).fit(q=0.5, max_iter=1000)
+            trim_boot_coefs.append(fit_b.params["tariff_x_post"])
+        except Exception:
+            pass
+        if (b + 1) % 200 == 0:
+            print(f"    ... {b + 1}/{N_BOOT} bootstrap reps done")
+
+    trim_arr = np.array(trim_boot_coefs)
+    trim_boot_se = trim_arr.std()
+    trim_ci_lo = np.percentile(trim_arr, 2.5)
+    trim_ci_hi = np.percentile(trim_arr, 97.5)
+    trim_sig = "*" if (trim_ci_lo > 0 or trim_ci_hi < 0) else ""
+    print(f"\n  Median QR [0,60] (bootstrap): coef = {qr_trim_coef:.1f}, "
+          f"SE = {trim_boot_se:.1f}, "
+          f"95% CI = [{trim_ci_lo:.1f}, {trim_ci_hi:.1f}] {trim_sig}")
+    qr_results["trim60"] = {
+        "coef": qr_trim_coef, "boot_se": trim_boot_se,
+        "ci_lo": trim_ci_lo, "ci_hi": trim_ci_hi,
+        "sig": trim_ci_lo > 0 or trim_ci_hi < 0,
+    }
+
+
+# -----------------------------------------------------------------------
+# Step 6e: Leave-Multiple-Industries-Out (drop 3 at a time)
+# -----------------------------------------------------------------------
+# The single-industry leave-out test (Step 6c) shows no one industry drives
+# the result. But what if a coalition of 2-3 industries jointly drive it?
+# Test all C(24,3) = 2,024 combinations of dropping 3 industries at once.
+# If the result survives every combination, no small group of industries
+# can explain the finding.
+# -----------------------------------------------------------------------
+print(f"\n{'=' * 65}")
+print("STEP 6e: Leave-Multiple-Industries-Out (drop 3 at a time)")
+print(f"Testing all C({len(industries_in_sample)},3) = "
+      f"{len(list(combinations(industries_in_sample, 3))):,} combinations")
+print("=" * 65)
+
+drop3_combos = list(combinations(industries_in_sample, 3))
+drop3_results = []
+
+for i, combo in enumerate(drop3_combos):
+    df_excl = df[~df["naics3_str"].isin(combo)].copy()
+    try:
+        m = pf.feols(MAIN_FORMULA, data=df_excl, vcov={"CRV1": "naics3_str"})
+        drop3_results.append({
+            "dropped": combo,
+            "coef": m.coef()["tariff_x_post"],
+            "se": m.se()["tariff_x_post"],
+            "pvalue": m.pvalue()["tariff_x_post"],
+            "n_obs": m._N,
+        })
+    except Exception:
+        drop3_results.append({
+            "dropped": combo, "coef": np.nan, "se": np.nan,
+            "pvalue": np.nan, "n_obs": np.nan,
+        })
+    if (i + 1) % 500 == 0:
+        print(f"  ... {i + 1:,}/{len(drop3_combos):,} combinations done")
+
+drop3_df = pd.DataFrame(drop3_results).dropna(subset=["coef"])
+print(f"\n  Completed {len(drop3_df):,} regressions")
+
+n_sig = (drop3_df["pvalue"] < 0.05).sum()
+pct_sig = n_sig / len(drop3_df) * 100
+
+print(f"\n  Coefficient distribution:")
+print(f"    Min:    {drop3_df['coef'].min():.1f}")
+print(f"    p25:    {drop3_df['coef'].quantile(0.25):.1f}")
+print(f"    Median: {drop3_df['coef'].median():.1f}")
+print(f"    p75:    {drop3_df['coef'].quantile(0.75):.1f}")
+print(f"    Max:    {drop3_df['coef'].max():.1f}")
+print(f"\n  Significant at p < 0.05: {n_sig:,}/{len(drop3_df):,} ({pct_sig:.1f}%)")
+print(f"  p-value range: [{drop3_df['pvalue'].min():.4f}, {drop3_df['pvalue'].max():.4f}]")
+
+# Show the worst-case combination (highest p-value)
+worst = drop3_df.loc[drop3_df["pvalue"].idxmax()]
+worst_names = []
+for ind in worst["dropped"]:
+    match = tariff_labels[tariff_labels["naics3"] == ind]
+    name = match["sector_name"].values[0] if len(match) > 0 else ind
+    worst_names.append(f"{ind} ({name})")
+print(f"\n  Worst-case combination (highest p-value):")
+print(f"    Dropped: {', '.join(worst_names)}")
+print(f"    Coef = {worst['coef']:.1f}, p = {worst['pvalue']:.3f}")
+
+# Show the best-case combination (most negative coefficient)
+best = drop3_df.loc[drop3_df["coef"].idxmin()]
+best_names = []
+for ind in best["dropped"]:
+    match = tariff_labels[tariff_labels["naics3"] == ind]
+    name = match["sector_name"].values[0] if len(match) > 0 else ind
+    best_names.append(f"{ind} ({name})")
+print(f"\n  Strongest combination (most negative coef):")
+print(f"    Dropped: {', '.join(best_names)}")
+print(f"    Coef = {best['coef']:.1f}, p = {best['pvalue']:.3f}")
+
+
+# -----------------------------------------------------------------------
 # Step 7: Summary table
 # -----------------------------------------------------------------------
 print(f"\n{'=' * 65}")
@@ -610,4 +888,31 @@ for label, m in robustness.items():
         print(f"{'  └ tariff_x_covid':<30} {cc:>8.1f} {cs:>8.1f} {cp:>8.3f} {n:>7}")
 
 print("-" * len(header))
+
+# Quantile regression results
+if qr_results:
+    print(f"\n{'Quantile Regression (median FE)':<30} {'Coef':>8} {'BootSE':>8} {'95% CI':>24}")
+    print("-" * 74)
+    for tau in [0.25, 0.50, 0.75]:
+        if tau in qr_results:
+            r = qr_results[tau]
+            sig = "*" if r.get("sig") else ""
+            print(f"{'  QR tau=' + str(tau):<30} {r['coef']:>8.1f} {r.get('boot_se', 0):>8.1f} "
+                  f"  [{r.get('ci_lo', 0):>8.1f}, {r.get('ci_hi', 0):>8.1f}] {sig}")
+    if "trim60" in qr_results:
+        r = qr_results["trim60"]
+        sig = "*" if r.get("sig") else ""
+        print(f"{'  QR median [0,60] trim':<30} {r['coef']:>8.1f} {r.get('boot_se', 0):>8.1f} "
+              f"  [{r.get('ci_lo', 0):>8.1f}, {r.get('ci_hi', 0):>8.1f}] {sig}")
+    print("-" * 74)
+
+# Leave-3-industries-out summary
+print(f"\n{'Leave-3-Industries-Out':<30} {'Median Coef':>12} {'% Sig (p<.05)':>15} "
+      f"{'Coef Range':>20}")
+print("-" * 80)
+print(f"{'  Drop 3 (N=' + str(len(drop3_df)) + ')':<30} {drop3_df['coef'].median():>12.1f} "
+      f"{pct_sig:>14.1f}% "
+      f"  [{drop3_df['coef'].min():>8.1f}, {drop3_df['coef'].max():>8.1f}]")
+print("-" * 80)
+
 print("\nAnalysis complete.")
