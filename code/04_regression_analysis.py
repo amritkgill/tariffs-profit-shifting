@@ -26,6 +26,7 @@ Robustness checks:
   - Quantile regression at tau=0.25/0.50/0.75 (modified Canay 2011, median FE, cluster bootstrap)
   - Quantile regression on [0,60] trimmed ETR (strongest outlier robustness)
   - Leave-3-industries-out (all C(24,3) = 2,024 combinations)
+  - Heterogeneity: foreign profit share, R&D intensity, firm size interactions
 
 Input:
   - data/processed/merged_panel.csv
@@ -118,6 +119,30 @@ print(f"TCJA exposure: {n_tcja:,} obs with pre-treatment FPS, "
 
 # -- Interaction term --
 df["tariff_x_post"] = df["mean_tariff_increase"] * df["post2018"]
+
+# -- Heterogeneity variables --
+# Split firms by pre-existing foreign operations (can they shift profits?)
+# high_fps = above-median pre-treatment foreign profit share among firms that report it
+fps_median = df.loc[df["pre_fps"].notna(), "pre_fps"].median()
+df["high_fps"] = (df["pre_fps"] >= fps_median).astype(float)
+df.loc[df["pre_fps"].isna(), "high_fps"] = np.nan
+df["tariff_x_post_x_highfps"] = df["tariff_x_post"] * df["high_fps"]
+# Also create continuous interaction for dose-response
+df["tariff_x_post_x_prefps"] = df["tariff_x_post"] * df["pre_fps"]
+# R&D intensity interaction (transfer pricing channel)
+pre_rd = df[df["year"] <= 2017].groupby("cik")["rd_intensity"].mean()
+df["pre_rd"] = df["cik"].map(pre_rd)
+rd_median = df.loc[df["pre_rd"].notna(), "pre_rd"].median()
+df["high_rd"] = (df["pre_rd"] >= rd_median).astype(float)
+df.loc[df["pre_rd"].isna(), "high_rd"] = np.nan
+df["tariff_x_post_x_highrd"] = df["tariff_x_post"] * df["high_rd"]
+# Firm size interaction (large MNCs vs small firms)
+pre_rev = df[df["year"] <= 2017].groupby("cik")["log_revenue"].mean()
+df["pre_log_rev"] = df["cik"].map(pre_rev)
+rev_median = df.loc[df["pre_log_rev"].notna(), "pre_log_rev"].median()
+df["high_rev"] = (df["pre_log_rev"] >= rev_median).astype(float)
+df.loc[df["pre_log_rev"].isna(), "high_rev"] = np.nan
+df["tariff_x_post_x_highrev"] = df["tariff_x_post"] * df["high_rev"]
 
 # -- Alternative tariff measures (standardized for comparability) --
 # Each is z-scored so coefficients measure "effect of 1 SD increase in exposure"
@@ -850,6 +875,146 @@ for ind in best["dropped"]:
 print(f"\n  Strongest combination (most negative coef):")
 print(f"    Dropped: {', '.join(best_names)}")
 print(f"    Coef = {best['coef']:.1f}, p = {best['pvalue']:.3f}")
+
+
+# -----------------------------------------------------------------------
+# Step 6f: Heterogeneity Analysis
+# -----------------------------------------------------------------------
+# The median regression shows no effect at the typical firm, but the OLS
+# and p5/p95 results are significant. This suggests the effect is
+# concentrated among a subset of firms. Which ones?
+#
+# If tariffs cause profit shifting, the effect should be strongest among:
+#   1. Firms with HIGH pre-existing foreign operations (they have the
+#      infrastructure — foreign subsidiaries, IP abroad — to shift profits)
+#   2. Firms with HIGH R&D intensity (transfer pricing on IP is the main
+#      profit-shifting channel)
+#   3. Large firms (more resources for international tax planning)
+#
+# We test this with interaction terms and split-sample regressions.
+# -----------------------------------------------------------------------
+print(f"\n{'=' * 65}")
+print("STEP 6f: Heterogeneity Analysis")
+print("Who responds to tariffs? Splitting by firm characteristics")
+print("=" * 65)
+
+n_high_fps = df["high_fps"].sum()
+n_low_fps = (df["high_fps"] == 0).sum()
+print(f"\n  Foreign profit share split (median = {fps_median:.3f}):")
+print(f"    High FPS firms: {n_high_fps:,.0f} obs")
+print(f"    Low FPS firms:  {n_low_fps:,.0f} obs")
+
+# --- H1: Interaction model (full sample) ---
+print("\n--- H1: Tariff x Post x High Foreign Profit Share (interaction) ---")
+h1 = pf.feols(
+    f"etr_winsorized ~ tariff_x_post + tariff_x_post_x_highfps + high_fps"
+    f" + {CONTROLS_TCJA} | cik + year",
+    data=df, vcov={"CRV1": "naics3_str"},
+)
+print(h1.summary())
+
+# --- H2: Split sample — high FPS only ---
+print("\n--- H2: High foreign profit share firms only ---")
+df_high_fps = df[df["high_fps"] == 1].copy()
+h2 = pf.feols(
+    MAIN_FORMULA,
+    data=df_high_fps, vcov={"CRV1": "naics3_str"},
+)
+print(h2.summary())
+
+# --- H3: Split sample — low FPS only ---
+print("\n--- H3: Low foreign profit share firms only ---")
+df_low_fps = df[df["high_fps"] == 0].copy()
+h3 = pf.feols(
+    MAIN_FORMULA,
+    data=df_low_fps, vcov={"CRV1": "naics3_str"},
+)
+print(h3.summary())
+
+# --- H4: Continuous FPS interaction (dose-response) ---
+print("\n--- H4: Tariff x Post x Pre-FPS (continuous interaction) ---")
+h4 = pf.feols(
+    f"etr_winsorized ~ tariff_x_post + tariff_x_post_x_prefps"
+    f" + {CONTROLS_TCJA} | cik + year",
+    data=df, vcov={"CRV1": "naics3_str"},
+)
+print(h4.summary())
+
+# --- H5: R&D intensity interaction ---
+print("\n--- H5: Tariff x Post x High R&D (transfer pricing channel) ---")
+h5 = pf.feols(
+    f"etr_winsorized ~ tariff_x_post + tariff_x_post_x_highrd + high_rd"
+    f" + {CONTROLS_TCJA} | cik + year",
+    data=df, vcov={"CRV1": "naics3_str"},
+)
+print(h5.summary())
+
+# --- H6: Firm size interaction ---
+print("\n--- H6: Tariff x Post x Large Firm ---")
+h6 = pf.feols(
+    f"etr_winsorized ~ tariff_x_post + tariff_x_post_x_highrev + high_rev"
+    f" + {CONTROLS_TCJA} | cik + year",
+    data=df, vcov={"CRV1": "naics3_str"},
+)
+print(h6.summary())
+
+# --- Summary ---
+print(f"\n{'=' * 65}")
+print("HETEROGENEITY SUMMARY")
+print("=" * 65)
+het_header = f"{'Specification':<40} {'Coef':>8} {'SE':>8} {'p-val':>8} {'N':>7}"
+print(het_header)
+print("-" * len(het_header))
+
+# H1 interaction
+c1 = h1.coef()["tariff_x_post"]
+s1 = h1.se()["tariff_x_post"]
+p1 = h1.pvalue()["tariff_x_post"]
+print(f"{'H1: Base (low FPS firms)':<40} {c1:>8.1f} {s1:>8.1f} {p1:>8.3f} {h1._N:>7}")
+c1i = h1.coef()["tariff_x_post_x_highfps"]
+s1i = h1.se()["tariff_x_post_x_highfps"]
+p1i = h1.pvalue()["tariff_x_post_x_highfps"]
+print(f"{'  + High FPS interaction':<40} {c1i:>8.1f} {s1i:>8.1f} {p1i:>8.3f} {h1._N:>7}")
+print(f"{'  = Total effect for high FPS':<40} {c1+c1i:>8.1f}")
+
+# H2/H3 split sample
+c2 = h2.coef()["tariff_x_post"]
+s2 = h2.se()["tariff_x_post"]
+p2 = h2.pvalue()["tariff_x_post"]
+print(f"{'H2: High FPS only':<40} {c2:>8.1f} {s2:>8.1f} {p2:>8.3f} {h2._N:>7}")
+
+c3 = h3.coef()["tariff_x_post"]
+s3 = h3.se()["tariff_x_post"]
+p3 = h3.pvalue()["tariff_x_post"]
+print(f"{'H3: Low FPS only':<40} {c3:>8.1f} {s3:>8.1f} {p3:>8.3f} {h3._N:>7}")
+
+# H4 continuous
+c4 = h4.coef()["tariff_x_post_x_prefps"]
+s4 = h4.se()["tariff_x_post_x_prefps"]
+p4 = h4.pvalue()["tariff_x_post_x_prefps"]
+print(f"{'H4: Continuous FPS interaction':<40} {c4:>8.1f} {s4:>8.1f} {p4:>8.3f} {h4._N:>7}")
+
+# H5 R&D
+c5 = h5.coef()["tariff_x_post"]
+s5 = h5.se()["tariff_x_post"]
+p5t = h5.pvalue()["tariff_x_post"]
+print(f"{'H5: Base (low R&D firms)':<40} {c5:>8.1f} {s5:>8.1f} {p5t:>8.3f} {h5._N:>7}")
+c5i = h5.coef()["tariff_x_post_x_highrd"]
+s5i = h5.se()["tariff_x_post_x_highrd"]
+p5i = h5.pvalue()["tariff_x_post_x_highrd"]
+print(f"{'  + High R&D interaction':<40} {c5i:>8.1f} {s5i:>8.1f} {p5i:>8.3f} {h5._N:>7}")
+
+# H6 size
+c6 = h6.coef()["tariff_x_post"]
+s6 = h6.se()["tariff_x_post"]
+p6 = h6.pvalue()["tariff_x_post"]
+print(f"{'H6: Base (small firms)':<40} {c6:>8.1f} {s6:>8.1f} {p6:>8.3f} {h6._N:>7}")
+c6i = h6.coef()["tariff_x_post_x_highrev"]
+s6i = h6.se()["tariff_x_post_x_highrev"]
+p6i = h6.pvalue()["tariff_x_post_x_highrev"]
+print(f"{'  + Large firm interaction':<40} {c6i:>8.1f} {s6i:>8.1f} {p6i:>8.3f} {h6._N:>7}")
+
+print("-" * len(het_header))
 
 
 # -----------------------------------------------------------------------
